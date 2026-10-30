@@ -3,7 +3,7 @@ import axios from "axios";
 import { auth } from "./firebase";
 
 const API = axios.create({
-    baseURL: "http://localhost:5000"
+    baseURL: "https://buy2basket-e-commerce-1.onrender.com"
 });
 
 API.interceptors.request.use(
