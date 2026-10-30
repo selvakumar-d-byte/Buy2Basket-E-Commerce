@@ -36,9 +36,7 @@ function Cart() {
                 }
             } catch (err) {
                 if (active) {
-                    setError(
-                        err.response?.data?.message || "Unable to load cart."
-                    );
+                    setError(err.response?.data?.message || "Unable to load cart.");
                 }
             } finally {
                 if (active) setLoading(false);
@@ -103,33 +101,23 @@ function Cart() {
 
     if (loading) {
         return (
-            <div className="min-h-[60vh] flex items-center justify-center">
-                Loading your cart...
-            </div>
+            <div className="min-h-[60vh] flex items-center justify-center">Loading your cart...</div>
         );
     }
 
     return (
         <main className="min-h-screen bg-gray-50 px-4 py-10 sm:px-8 lg:px-20">
-            <h1 className="mb-8 text-3xl font-bold text-gray-900">
-                My Shopping Cart
-            </h1>
+            <h1 className="mb-8 text-3xl font-bold text-gray-900">My Shopping Cart</h1>
 
             {error && (
-                <p className="mb-5 rounded-lg bg-red-50 p-3 text-sm text-red-600">
-                    {error}
-                </p>
+                <p className="mb-5 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
             )}
 
             {cartItems.length === 0 ? (
                 <div className="rounded-xl bg-white px-5 py-16 text-center">
                     <i className="fa-solid fa-cart-shopping text-5xl text-gray-300" />
-                    <h2 className="mt-5 text-xl font-semibold">
-                        Your cart is empty
-                    </h2>
-                    <p className="mt-2 text-gray-500">
-                        Add some products to your cart.
-                    </p>
+                    <h2 className="mt-5 text-xl font-semibold">Your cart is empty</h2>
+                    <p className="mt-2 text-gray-500">Add some products to your cart.</p>
                     <button
                         onClick={() => navigate("/products")}
                         className="mt-6 rounded-lg bg-[#245C45] px-6 py-3 font-semibold text-white hover:bg-[#173B2E]"
@@ -150,28 +138,18 @@ function Cart() {
                                     key={product._id}
                                     className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row"
                                 >
-                                    <img
-                                        src={product.image}
-                                        alt={product.name}
-                                        className="h-28 w-28 rounded-lg object-cover"
-                                    />
+                                    <img src={product.image} alt={product.name} className="h-28 w-28 rounded-lg object-cover"/>
 
                                     <div className="flex flex-1 flex-col justify-between gap-3">
                                         <div>
-                                            <h2 className="font-semibold text-gray-800">
-                                                {product.name}
-                                            </h2>
-                                            <p className="mt-1 font-bold text-[#245C45]">
-                                                ₹{Number(product.price).toLocaleString("en-IN")}
-                                            </p>
+                                            <h2 className="font-semibold text-gray-800">{product.name}</h2>
+                                            <p className="mt-1 font-bold text-[#245C45]">₹{Number(product.price).toLocaleString("en-IN")}</p>
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3">
                                             <button
                                                 disabled={actionLoading === product._id || item.quantity <= 1}
-                                                onClick={() =>
-                                                    handleQuantity(product._id, item.quantity - 1)
-                                                }
+                                                onClick={() =>handleQuantity(product._id, item.quantity - 1)}
                                                 className="h-8 w-8 rounded border disabled:opacity-40"
                                             >
                                                 -
@@ -181,9 +159,7 @@ function Cart() {
 
                                             <button
                                                 disabled={actionLoading === product._id || item.quantity >= product.stock}
-                                                onClick={() =>
-                                                    handleQuantity(product._id, item.quantity + 1)
-                                                }
+                                                onClick={() =>handleQuantity(product._id, item.quantity + 1)}
                                                 className="h-8 w-8 rounded border disabled:opacity-40"
                                             >
                                                 +

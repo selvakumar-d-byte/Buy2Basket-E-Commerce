@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../config/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
@@ -18,6 +18,14 @@ function Signup() {
     const [loading, setLoading] = useState(false);
 
     const navigate = useNavigate()
+
+    useEffect(() => {
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                navigate('/')
+            }
+        })
+    })
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -76,7 +84,7 @@ function Signup() {
         try {
             setLoading(true);
 
-            await axios.post(`${process.env.REACT_APP_API_URL}/verify-signup-otp`, {email,otp})
+            await axios.post(`${process.env.REACT_APP_API_URL}/verify-signup-otp`, { email, otp })
 
             const user = await createUserWithEmailAndPassword(auth, email, password)
 

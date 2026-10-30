@@ -337,6 +337,7 @@ function Products() {
                                                 <img
                                                     src={product.image}
                                                     alt={product.name}
+                                                    onClick={() => navigate(`/products/${product._id}`)}
                                                     loading="lazy"
                                                     className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
                                                     onError={(e) => {

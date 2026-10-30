@@ -61,10 +61,8 @@ function Home() {
                     if (user) { setUser(true) }
                 })
 
-                const response = await axios.get("http://localhost:5000/products");
-
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/products`);
                 const allProducts = Array.isArray(response.data) ? response.data : response.data.products || [];
-
                 const randomProducts = [...allProducts].sort(() => Math.random() - 0.5).slice(0, 5);
 
                 setProducts(randomProducts);

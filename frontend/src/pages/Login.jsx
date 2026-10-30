@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../config/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -10,6 +10,14 @@ function Login() {
     const [loading, setLoading] = useState(false)
 
     const navigate = useNavigate()
+
+    useEffect(()=>{
+        auth.onAuthStateChanged((user)=>{
+            if(user){
+                navigate('/')
+            }
+        })
+    })
 
     async function login()
     {
@@ -24,6 +32,7 @@ function Login() {
             navigate('/')
         }).catch(()=>{
             alert('Login Failed, PLease try again')
+            setLoading(false)
         })
     }
 
