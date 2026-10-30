@@ -1,0 +1,34 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Header from "./components/Header";
+import Navbar from "./components/Navbar";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import Home from "./pages/Home";
+import Footer from "./components/Footer";
+import Products from "./pages/Products";
+import Cart from "./pages/Cart";
+import Wishlist from "./pages/Wishlist";
+import ScrollToTop from "./components/ScrollToTop";
+
+function App() {
+  return (
+    <>
+      <BrowserRouter>
+        <ScrollToTop />
+        <Header />
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/products" element={<Products />} /><Route path="/cart" element={<Cart />} />
+          <Route path="/wishlist" element={<Wishlist />} />
+        </Routes>
+        <Footer />
+      </BrowserRouter>
+
+    </>
+  );
+}
+
+export default App;

@@ -1,0 +1,590 @@
+
+const dns = require('node:dns');
+dns.setServers(['1.1.1.1', '8.8.8.8']);
+
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const multer = require('multer');
+const streamifier = require('streamifier');
+require('dotenv').config();
+const nodemailer = require("nodemailer");
+const crypto = require("node:crypto");
+
+const cloudinary = require('./config/cloudinary');
+const Product = require('./models/product');
+const Cart = require('./models/CartAPI');
+const Wishlist = require('./models/Wishlist');
+const verifyToken = require('./middleware/verifyToken');
+
+const app = express();
+const PORT = 5000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+const otpStore = new Map();
+
+const mailTransporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+// Send email OTP
+app.post("/send-signup-otp", async (req, res) => {
+    try {
+        const email = String(req.body.email || '').trim().toLowerCase();
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                message: "Please enter a valid email address"
+            });
+        }
+
+        const otp = crypto.randomInt(100000, 1000000).toString();
+
+        await mailTransporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: "Buy2Basket - Email Verification OTP",
+            text: `Your Buy2Basket verification OTP is ${otp}. It expires in 5 minutes. Do not share this code with anyone.`
+        });
+
+        otpStore.set(email, {
+            otp,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+            attempts: 0
+        });
+
+        res.json({
+            message: "OTP sent successfully to your email"
+        });
+    } catch (error) {
+        console.error("OTP email error:", error.message);
+
+        res.status(500).json({
+            message: "Failed to send OTP. Please try again."
+        });
+    }
+});
+
+// Verify email OTP
+app.post("/verify-signup-otp", (req, res) => {
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const enteredOtp = String(req.body.otp || "").trim();
+
+    const record = otpStore.get(email);
+
+    if (!record) {
+        return res.status(400).json({
+            message: "Please request a new OTP"
+        });
+    }
+
+    if (Date.now() > record.expiresAt) {
+        otpStore.delete(email);
+
+        return res.status(400).json({
+            message: "OTP expired. Please request a new OTP"
+        });
+    }
+
+    if (record.attempts >= 5) {
+        otpStore.delete(email);
+
+        return res.status(429).json({
+            message: "Too many attempts. Please request a new OTP"
+        });
+    }
+
+    if (record.otp !== enteredOtp) {
+        record.attempts += 1;
+
+        return res.status(400).json({
+            message: "Incorrect OTP"
+        });
+    }
+
+    otpStore.delete(email);
+
+    res.json({
+        verified: true,
+        message: "Email verified successfully"
+    });
+});
+
+// Multer: receive images in memory
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URL)
+    .then(() => {
+        console.log('DB Connected');
+
+        app.listen(PORT, () => {
+            console.log(`Server started on port ${PORT}`);
+        });
+    })
+    .catch((error) => {
+        console.log('DB failed:', error.message);
+    });
+
+// Home / API test
+app.get('/', (req, res) => {
+    res.json({
+        message: 'Buy2Basket API is running'
+    });
+});
+
+// Upload image to Cloudinary (testing API)
+app.post('/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                message: 'Please select an image'
+            });
+        }
+
+        const result = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'buy2basket/products'
+                },
+                (error, uploadResult) => {
+                    if (error) {
+                        return reject(error);
+                    }
+
+                    resolve(uploadResult);
+                }
+            );
+
+            streamifier
+                .createReadStream(req.file.buffer)
+                .pipe(uploadStream);
+        });
+
+        res.status(200).json({
+            message: 'Image uploaded successfully',
+            imageUrl: result.secure_url,
+            publicId: result.public_id
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Image upload failed',
+            error: error.message
+        });
+    }
+});
+
+// Add product + image to MongoDB
+app.post('/products', upload.single('image'), async (req, res) => {
+    try {
+        const {
+            name,
+            category,
+            price,
+            originalPrice,
+            discount,
+            rating,
+            stock,
+            description,
+            brand
+        } = req.body;
+
+        // Validate required fields
+        if (
+            !name ||
+            !category ||
+            price === undefined ||
+            price === '' ||
+            originalPrice === undefined ||
+            originalPrice === ''
+        ) {
+            return res.status(400).json({
+                message: 'Name, category, price and originalPrice are required'
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                message: 'Please select a product image'
+            });
+        }
+
+        // Upload product image to Cloudinary
+        const result = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'buy2basket/products'
+                },
+                (error, uploadResult) => {
+                    if (error) {
+                        return reject(error);
+                    }
+
+                    resolve(uploadResult);
+                }
+            );
+
+            streamifier
+                .createReadStream(req.file.buffer)
+                .pipe(uploadStream);
+        });
+
+        // Create product document
+        const product = new Product({
+            name,
+            category,
+            price: Number(price),
+            originalPrice: Number(originalPrice),
+            discount: discount ? Number(discount) : 0,
+            rating: rating ? Number(rating) : 4,
+            stock: stock !== undefined && stock !== ''
+                ? Number(stock)
+                : 10,
+            description: description || '',
+            brand: brand || 'Buy2Basket',
+            image: result.secure_url
+        });
+
+        // Save product in MongoDB
+        const savedProduct = await product.save();
+
+        res.status(201).json({
+            message: 'Product added successfully',
+            product: savedProduct
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Failed to add product',
+            error: error.message
+        });
+    }
+});
+
+// Get all products
+app.get('/products', async (req, res) => {
+    try {
+        const products = await Product.find().sort({ createdAt: -1 });
+
+        res.status(200).json({
+            count: products.length,
+            products
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Failed to fetch products',
+            error: error.message
+        });
+    }
+});
+
+// Get one product by ID
+app.get('/products/:id', async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({
+                message: 'Product not found'
+            });
+        }
+
+        res.status(200).json(product);
+    } catch (error) {
+        res.status(400).json({
+            message: 'Invalid product ID or request failed',
+            error: error.message
+        });
+    }
+});
+
+// ADD TO CART
+app.post('/cart/add', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { productId } = req.body;
+
+        if (!mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID' });
+        }
+
+        const product = await Product.findById(productId);
+
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        if (product.stock < 1) {
+            return res.status(400).json({ message: 'Product is out of stock' });
+        }
+
+        let cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            cart = new Cart({ userId, items: [] });
+        }
+
+        const existingItem = cart.items.find(
+            item => item.productId.toString() === productId
+        );
+
+        if (existingItem) {
+            if (existingItem.quantity >= product.stock) {
+                return res.status(400).json({
+                    message: 'Maximum available stock reached'
+                });
+            }
+
+            existingItem.quantity += 1;
+        } else {
+            cart.items.push({
+                productId,
+                quantity: 1
+            });
+        }
+
+        await cart.save();
+
+        res.status(200).json({
+            message: 'Product added to cart',
+            cart
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// GET CART
+app.get('/cart', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const cart = await Cart.findOne({ userId })
+            .populate('items.productId');
+
+        res.status(200).json({
+            items: cart ? cart.items : []
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// UPDATE CART QUANTITY
+app.put('/cart/update', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { productId, quantity } = req.body;
+
+        if (!mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID' });
+        }
+
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            return res.status(400).json({ message: 'Invalid quantity' });
+        }
+
+        const product = await Product.findById(productId);
+
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        if (quantity > product.stock) {
+            return res.status(400).json({
+                message: 'Requested quantity exceeds available stock'
+            });
+        }
+
+        const cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            return res.status(404).json({ message: 'Cart not found' });
+        }
+
+        const item = cart.items.find(
+            item => item.productId.toString() === productId
+        );
+
+        if (!item) {
+            return res.status(404).json({ message: 'Product not found in cart' });
+        }
+
+        item.quantity = quantity;
+
+        await cart.save();
+
+        res.status(200).json({
+            message: 'Cart quantity updated',
+            cart
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// REMOVE FROM CART
+app.delete('/cart/remove', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { productId } = req.body;
+
+        if (!mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID' });
+        }
+
+        const cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            return res.status(404).json({ message: 'Cart not found' });
+        }
+
+        cart.items = cart.items.filter(
+            item => item.productId.toString() !== productId
+        );
+
+        await cart.save();
+
+        res.status(200).json({
+            message: 'Product removed from cart',
+            cart
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// CLEAR CART
+app.delete('/cart/clear', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            return res.status(200).json({ message: 'Cart is already empty' });
+        }
+
+        cart.items = [];
+
+        await cart.save();
+
+        res.status(200).json({ message: 'Cart cleared successfully' });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// ADD TO WISHLIST
+app.post('/wishlist/add', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { productId } = req.body;
+
+        if (!mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID' });
+        }
+
+        const product = await Product.findById(productId);
+
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        let wishlist = await Wishlist.findOne({ userId });
+
+        if (!wishlist) {
+            wishlist = new Wishlist({ userId, productIds: [] });
+        }
+
+        const alreadyExists = wishlist.productIds.some(
+            id => id.toString() === productId
+        );
+
+        if (alreadyExists) {
+            return res.status(200).json({
+                message: 'Product already in wishlist'
+            });
+        }
+
+        wishlist.productIds.push(productId);
+
+        await wishlist.save();
+
+        res.status(200).json({
+            message: 'Product added to wishlist',
+            wishlist
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// GET WISHLIST
+app.get('/wishlist', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const wishlist = await Wishlist.findOne({ userId })
+            .populate('productIds');
+
+        res.status(200).json({
+            productIds: wishlist ? wishlist.productIds : []
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+// REMOVE FROM WISHLIST
+app.delete('/wishlist/remove', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { productId } = req.body;
+
+        if (!mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID' });
+        }
+
+        const wishlist = await Wishlist.findOne({ userId });
+
+        if (!wishlist) {
+            return res.status(404).json({ message: 'Wishlist not found' });
+        }
+
+        wishlist.productIds = wishlist.productIds.filter(
+            id => id.toString() !== productId
+        );
+
+        await wishlist.save();
+
+        res.status(200).json({
+            message: 'Product removed from wishlist'
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
