@@ -14,6 +14,7 @@ function Checkout() {
     const [placingOrder, setPlacingOrder] = useState(false);
     const [error, setError] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("COD");
+    const [demoCardNumber, setDemoCardNumber] = useState("");
 
     const [address, setAddress] = useState({
         fullName: "",
@@ -114,92 +115,22 @@ function Checkout() {
         navigate("/my-orders");
     };
 
-    // Razorpay Online Payment
-    const handleRazorpayPayment = async () => {
-        const scriptLoaded = await loadRazorpayScript();
+    // Demo Card Payment - No real transaction
+    const handleDemoPayment = async () => {
+        const cardNumber = demoCardNumber.replace(/\s/g, "");
 
-        if (!scriptLoaded) {
-            throw new Error("Unable to load Razorpay. Please try again.");
+        if (!/^\d{16}$/.test(cardNumber)) {
+            throw new Error("Please enter exactly 16 digits.");
         }
 
-        // Create Razorpay order from backend
         const response = await API.post(
-            "/payments/create-order"
+            "/payments/demo-success",
+            address
         );
 
-        const options = {
-            key: response.data.keyId,
-            amount: response.data.amount,
-            currency: response.data.currency,
-            name: "Buy2Basket",
-            description: "Purchase Payment",
-            order_id: response.data.orderId,
+        alert(response.data.message || "Demo payment successful!");
 
-            prefill: {
-                name: address.fullName,
-                email: address.email,
-                contact: address.phone
-            },
-
-            theme: {
-                color: "#245C45"
-            },
-
-            handler: async function (paymentResponse) {
-                try {
-                    // Verify payment in backend
-                    const verificationResponse = await API.post(
-                        "/payments/verify",
-                        {
-                            razorpay_order_id:
-                                paymentResponse.razorpay_order_id,
-
-                            razorpay_payment_id:
-                                paymentResponse.razorpay_payment_id,
-
-                            razorpay_signature:
-                                paymentResponse.razorpay_signature,
-
-                            deliveryAddress: address
-                        }
-                    );
-
-                    alert(
-                        verificationResponse.data.message ||
-                        "Payment successful!"
-                    );
-
-                    navigate("/my-orders");
-
-                } catch (err) {
-                    setError(
-                        err.response?.data?.message ||
-                        "Payment verification failed. Please contact support before retrying."
-                    );
-
-                    setPlacingOrder(false);
-                }
-            },
-
-            modal: {
-                ondismiss: function () {
-                    setPlacingOrder(false);
-                }
-            }
-        };
-
-        const razorpayInstance = new window.Razorpay(options);
-
-        razorpayInstance.on("payment.failed", function (paymentResponse) {
-            setError(
-                paymentResponse.error?.description ||
-                "Payment failed. Please try again."
-            );
-
-            setPlacingOrder(false);
-        });
-
-        razorpayInstance.open();
+        navigate("/my-orders");
     };
 
     // Form submission
@@ -212,8 +143,8 @@ function Checkout() {
 
             if (paymentMethod === "COD") {
                 await handleCODOrder();
-            } else {
-                await handleRazorpayPayment();
+            } else if (paymentMethod === "Demo") {
+                await handleDemoPayment();
             }
 
         } catch (err) {
@@ -335,11 +266,10 @@ function Checkout() {
                         <div className="space-y-4">
 
                             {/* COD */}
-                            <label className={`block cursor-pointer rounded-lg border p-4 ${
-                                paymentMethod === "COD"
-                                    ? "border-[#245C45] bg-green-50"
-                                    : "border-gray-300"
-                            }`}>
+                            <label className={`block cursor-pointer rounded-lg border p-4 ${paymentMethod === "COD"
+                                ? "border-[#245C45] bg-green-50"
+                                : "border-gray-300"
+                                }`}>
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="radio"
@@ -362,33 +292,57 @@ function Checkout() {
                                 </p>
                             </label>
 
-                            {/* Razorpay */}
-                            <label className={`block cursor-pointer rounded-lg border p-4 ${
-                                paymentMethod === "Razorpay"
-                                    ? "border-[#245C45] bg-green-50"
-                                    : "border-gray-300"
-                            }`}>
+                            {/* Demo Card Payment */}
+                            <label className={`block cursor-pointer rounded-lg border p-4 ${paymentMethod === "Demo"
+                                ? "border-[#245C45] bg-green-50"
+                                : "border-gray-300"
+                                }`}>
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="radio"
                                         name="paymentMethod"
-                                        value="Razorpay"
-                                        checked={paymentMethod === "Razorpay"}
-                                        onChange={(e) =>
-                                            setPaymentMethod(e.target.value)
-                                        }
+                                        value="Demo"
+                                        checked={paymentMethod === "Demo"}
+                                        onChange={(e) => setPaymentMethod(e.target.value)}
                                         className="accent-[#245C45]"
                                     />
 
                                     <span className="font-semibold text-gray-800">
-                                        Online Payment
+                                        Demo Card Payment
                                     </span>
                                 </div>
 
                                 <p className="ml-6 mt-2 text-sm text-gray-500">
-                                    Pay securely using UPI, Cards, Net Banking and more.
+                                    For project demonstration only. No real payment.
                                 </p>
                             </label>
+
+                            {paymentMethod === "Demo" && (
+                                <div className="mt-5">
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                                        Demo Card Number
+                                    </label>
+
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={16}
+                                        value={demoCardNumber}
+                                        onChange={(e) =>
+                                            setDemoCardNumber(
+                                                e.target.value.replace(/\D/g, "").slice(0, 16)
+                                            )
+                                        }
+                                        placeholder="Enter 16-digit demo card number"
+                                        required
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#245C45]"
+                                    />
+
+                                    <p className="mt-2 text-xs text-orange-600">
+                                        Demo only — no card details are stored and no real transaction occurs.
+                                    </p>
+                                </div>
+                            )}
 
                         </div>
                     </div>
@@ -402,7 +356,7 @@ function Checkout() {
                             ? "Processing..."
                             : paymentMethod === "COD"
                                 ? "Place Order"
-                                : "Pay Now"
+                                : "Complete Demo Payment"
                         }
                     </button>
                 </form>

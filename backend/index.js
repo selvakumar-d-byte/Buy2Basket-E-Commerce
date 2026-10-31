@@ -10,7 +10,6 @@ const streamifier = require('streamifier');
 require('dotenv').config();
 const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
-const Razorpay = require("razorpay");
 
 const cloudinary = require('./config/cloudinary');
 const Product = require('./models/product');
@@ -25,11 +24,6 @@ const PORT = 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
-});
 
 const otpStore = new Map();
 
@@ -124,245 +118,6 @@ app.post("/verify-signup-otp", (req, res) => {
         verified: true,
         message: "Email verified successfully"
     });
-});
-
-// CREATE RAZORPAY ORDER
-app.post('/payments/create-order', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.uid;
-
-        const cart = await Cart.findOne({ userId })
-            .populate('items.productId');
-
-        if (!cart || cart.items.length === 0) {
-            return res.status(400).json({
-                message: 'Your cart is empty'
-            });
-        }
-
-        let subtotal = 0;
-
-        for (const item of cart.items) {
-            const product = item.productId;
-
-            if (!product) {
-                return res.status(400).json({
-                    message: 'A product in your cart is unavailable'
-                });
-            }
-
-            if (product.stock < item.quantity) {
-                return res.status(400).json({
-                    message: `${product.name} has insufficient stock`
-                });
-            }
-
-            subtotal += product.price * item.quantity;
-        }
-
-        const deliveryCharge = 0;
-        const totalAmount = subtotal + deliveryCharge;
-        const amountInPaise = Math.round(totalAmount * 100);
-
-        if (!Number.isSafeInteger(amountInPaise) || amountInPaise < 100) {
-            return res.status(400).json({
-                message: 'Minimum payment amount is ₹1'
-            });
-        }
-
-        const razorpayOrder = await razorpay.orders.create({
-            amount: amountInPaise,
-            currency: 'INR',
-            receipt: `receipt_${Date.now()}`
-        });
-
-        res.status(201).json({
-            message: 'Razorpay order created successfully',
-            orderId: razorpayOrder.id,
-            amount: razorpayOrder.amount,
-            currency: razorpayOrder.currency,
-            keyId: process.env.RAZORPAY_KEY_ID
-        });
-
-    } catch (error) {
-        console.error('Razorpay create order error:', error);
-
-        res.status(500).json({
-            message: 'Unable to create payment order'
-        });
-    }
-});
-
-// VERIFY RAZORPAY PAYMENT
-app.post('/payments/verify', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.uid;
-
-        const {
-            razorpay_order_id,
-            razorpay_payment_id,
-            razorpay_signature,
-            deliveryAddress
-        } = req.body;
-
-        // Validate required fields
-        if (
-            !razorpay_order_id ||
-            !razorpay_payment_id ||
-            !razorpay_signature ||
-            !deliveryAddress
-        ) {
-            return res.status(400).json({
-                message: 'Missing payment or delivery details'
-            });
-        }
-
-        const {
-            fullName,
-            phone,
-            email,
-            address,
-            city,
-            state,
-            pincode
-        } = deliveryAddress;
-
-        if (
-            !fullName ||
-            !phone ||
-            !email ||
-            !address ||
-            !city ||
-            !state ||
-            !pincode
-        ) {
-            return res.status(400).json({
-                message: 'Please fill all delivery address fields'
-            });
-        }
-
-        // Generate expected signature
-        const generatedSignature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-            .digest('hex');
-
-        // Compare signatures safely
-        const expectedBuffer = Buffer.from(generatedSignature, 'hex');
-        const receivedBuffer = Buffer.from(razorpay_signature, 'hex');
-
-        if (
-            !/^[a-f0-9]{64}$/i.test(razorpay_signature) ||
-            !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)
-        ) {
-            return res.status(400).json({
-                message: 'Payment verification failed'
-            });
-        }
-
-        const session = await mongoose.startSession();
-
-        try {
-            let savedOrder;
-
-            await session.withTransaction(async () => {
-                const cart = await Cart.findOne({ userId })
-                    .populate('items.productId')
-                    .session(session);
-
-                if (!cart || cart.items.length === 0) {
-                    throw new Error('Your cart is empty');
-                }
-
-                let subtotal = 0;
-                const orderItems = [];
-
-                for (const item of cart.items) {
-                    const product = item.productId;
-
-                    if (!product) {
-                        throw new Error('A product in your cart is unavailable');
-                    }
-
-                    if (product.stock < item.quantity) {
-                        throw new Error(`${product.name} has insufficient stock`);
-                    }
-
-                    subtotal += product.price * item.quantity;
-
-                    orderItems.push({
-                        productId: product._id,
-                        name: product.name,
-                        image: product.image,
-                        price: product.price,
-                        quantity: item.quantity
-                    });
-                }
-
-                const deliveryCharge = 0;
-
-                for (const item of cart.items) {
-                    const result = await Product.updateOne(
-                        {
-                            _id: item.productId._id,
-                            stock: { $gte: item.quantity }
-                        },
-                        {
-                            $inc: { stock: -item.quantity }
-                        },
-                        { session }
-                    );
-
-                    if (result.modifiedCount !== 1) {
-                        throw new Error('Product stock changed. Please try again');
-                    }
-                }
-
-                const newOrder = await Order.create(
-                    [{
-                        userId,
-                        items: orderItems,
-                        deliveryAddress: {
-                            fullName,
-                            phone,
-                            email,
-                            address,
-                            city,
-                            state,
-                            pincode
-                        },
-                        subtotal,
-                        deliveryCharge,
-                        totalAmount: subtotal + deliveryCharge,
-                        paymentMethod: 'Razorpay',
-                        paymentStatus: 'Paid',
-                        orderStatus: 'Placed'
-                    }],
-                    { session }
-                );
-
-                savedOrder = newOrder[0];
-
-                cart.items = [];
-                await cart.save({ session });
-            });
-
-            return res.status(200).json({
-                message: 'Payment verified and order placed successfully',
-                order: savedOrder
-            });
-
-        } finally {
-            await session.endSession();
-        }
-
-    } catch (error) {
-        console.error('Payment verification error:', error.message);
-
-        return res.status(400).json({
-            message: error.message || 'Payment verification failed'
-        });
-    }
 });
 
 // Multer: receive images in memory
@@ -860,6 +615,137 @@ app.post('/orders/place', verifyToken, async (req, res) => {
 
         res.status(400).json({
             message: error.message || 'Failed to place order'
+        });
+
+    } finally {
+        await session.endSession();
+    }
+});
+
+// DEMO CARD PAYMENT (SIMULATION ONLY)
+app.post('/payments/demo-success', verifyToken, async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const userId = req.user.uid;
+
+        const {
+            fullName,
+            phone,
+            email,
+            address,
+            city,
+            state,
+            pincode
+        } = req.body;
+
+        if (
+            !fullName ||
+            !phone ||
+            !email ||
+            !address ||
+            !city ||
+            !state ||
+            !pincode
+        ) {
+            return res.status(400).json({
+                message: 'Please fill all delivery address fields'
+            });
+        }
+
+        let savedOrder;
+
+        await session.withTransaction(async () => {
+            const cart = await Cart.findOne({ userId })
+                .populate('items.productId')
+                .session(session);
+
+            if (!cart || cart.items.length === 0) {
+                throw new Error('Your cart is empty');
+            }
+
+            let subtotal = 0;
+            const orderItems = [];
+
+            for (const item of cart.items) {
+                const product = item.productId;
+
+                if (!product) {
+                    throw new Error('A product in your cart is unavailable');
+                }
+
+                if (product.stock < item.quantity) {
+                    throw new Error(`${product.name} has insufficient stock`);
+                }
+
+                subtotal += product.price * item.quantity;
+
+                orderItems.push({
+                    productId: product._id,
+                    name: product.name,
+                    image: product.image,
+                    price: product.price,
+                    quantity: item.quantity
+                });
+            }
+
+            // Reduce stock safely
+            for (const item of cart.items) {
+                const result = await Product.updateOne(
+                    {
+                        _id: item.productId._id,
+                        stock: { $gte: item.quantity }
+                    },
+                    {
+                        $inc: { stock: -item.quantity }
+                    },
+                    { session }
+                );
+
+                if (result.modifiedCount !== 1) {
+                    throw new Error('Product stock changed. Please try again');
+                }
+            }
+
+            const newOrder = await Order.create(
+                [{
+                    userId,
+                    items: orderItems,
+                    deliveryAddress: {
+                        fullName,
+                        phone,
+                        email,
+                        address,
+                        city,
+                        state,
+                        pincode
+                    },
+                    subtotal,
+                    deliveryCharge: 0,
+                    totalAmount: subtotal,
+                    paymentMethod: 'Demo Card',
+                    paymentStatus: 'Simulated',
+                    orderStatus: 'Placed'
+                }],
+                { session }
+            );
+
+            savedOrder = newOrder[0];
+
+            cart.items = [];
+            await cart.save({ session });
+        });
+
+        return res.status(201).json({
+            message: 'Demo payment successful. No real payment was processed.',
+            order: savedOrder
+        });
+
+    } catch (error) {
+        console.error('Demo payment error:', error.message);
+
+        return res.status(400).json({
+            message: error.message || 'Demo payment failed'
         });
 
     } finally {
