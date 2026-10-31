@@ -13,6 +13,7 @@ function Checkout() {
     const [loading, setLoading] = useState(true);
     const [placingOrder, setPlacingOrder] = useState(false);
     const [error, setError] = useState("");
+    const [paymentMethod, setPaymentMethod] = useState("COD");
 
     const [address, setAddress] = useState({
         fullName: "",
@@ -82,6 +83,126 @@ function Checkout() {
         }));
     };
 
+    // Load Razorpay Checkout script
+    const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+            if (window.Razorpay) {
+                resolve(true);
+                return;
+            }
+
+            const script = document.createElement("script");
+
+            script.src = "https://checkout.razorpay.com/v1/checkout.js";
+
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+
+            document.body.appendChild(script);
+        });
+    };
+
+    // Cash on Delivery
+    const handleCODOrder = async () => {
+        const response = await API.post(
+            "/orders/place",
+            address
+        );
+
+        alert(response.data.message || "Order placed successfully!");
+
+        navigate("/my-orders");
+    };
+
+    // Razorpay Online Payment
+    const handleRazorpayPayment = async () => {
+        const scriptLoaded = await loadRazorpayScript();
+
+        if (!scriptLoaded) {
+            throw new Error("Unable to load Razorpay. Please try again.");
+        }
+
+        // Create Razorpay order from backend
+        const response = await API.post(
+            "/payments/create-order"
+        );
+
+        const options = {
+            key: response.data.keyId,
+            amount: response.data.amount,
+            currency: response.data.currency,
+            name: "Buy2Basket",
+            description: "Purchase Payment",
+            order_id: response.data.orderId,
+
+            prefill: {
+                name: address.fullName,
+                email: address.email,
+                contact: address.phone
+            },
+
+            theme: {
+                color: "#245C45"
+            },
+
+            handler: async function (paymentResponse) {
+                try {
+                    // Verify payment in backend
+                    const verificationResponse = await API.post(
+                        "/payments/verify",
+                        {
+                            razorpay_order_id:
+                                paymentResponse.razorpay_order_id,
+
+                            razorpay_payment_id:
+                                paymentResponse.razorpay_payment_id,
+
+                            razorpay_signature:
+                                paymentResponse.razorpay_signature,
+
+                            deliveryAddress: address
+                        }
+                    );
+
+                    alert(
+                        verificationResponse.data.message ||
+                        "Payment successful!"
+                    );
+
+                    navigate("/my-orders");
+
+                } catch (err) {
+                    setError(
+                        err.response?.data?.message ||
+                        "Payment verification failed. Please contact support before retrying."
+                    );
+
+                    setPlacingOrder(false);
+                }
+            },
+
+            modal: {
+                ondismiss: function () {
+                    setPlacingOrder(false);
+                }
+            }
+        };
+
+        const razorpayInstance = new window.Razorpay(options);
+
+        razorpayInstance.on("payment.failed", function (paymentResponse) {
+            setError(
+                paymentResponse.error?.description ||
+                "Payment failed. Please try again."
+            );
+
+            setPlacingOrder(false);
+        });
+
+        razorpayInstance.open();
+    };
+
+    // Form submission
     const handlePlaceOrder = async (e) => {
         e.preventDefault();
         setError("");
@@ -89,21 +210,19 @@ function Checkout() {
         try {
             setPlacingOrder(true);
 
-            const response = await API.post(
-                "/orders/place",
-                address
-            );
-
-            alert(response.data.message || "Order placed successfully!");
-
-            navigate("/my-orders");
+            if (paymentMethod === "COD") {
+                await handleCODOrder();
+            } else {
+                await handleRazorpayPayment();
+            }
 
         } catch (err) {
             setError(
                 err.response?.data?.message ||
+                err.message ||
                 "Unable to place your order. Please try again."
             );
-        } finally {
+
             setPlacingOrder(false);
         }
     };
@@ -207,28 +326,70 @@ function Checkout() {
                         </div>
                     </div>
 
+                    {/* Payment Method */}
                     <div className="mt-8">
                         <h2 className="mb-4 text-xl font-bold text-gray-800">
                             Payment Method
                         </h2>
 
-                        <div className="rounded-lg border border-[#245C45] bg-green-50 p-4">
-                            <label className="flex items-center gap-3">
-                                <input
-                                    type="radio"
-                                    checked
-                                    readOnly
-                                    className="accent-[#245C45]"
-                                />
+                        <div className="space-y-4">
 
-                                <span className="font-semibold text-gray-800">
-                                    Cash on Delivery (COD)
-                                </span>
+                            {/* COD */}
+                            <label className={`block cursor-pointer rounded-lg border p-4 ${
+                                paymentMethod === "COD"
+                                    ? "border-[#245C45] bg-green-50"
+                                    : "border-gray-300"
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="radio"
+                                        name="paymentMethod"
+                                        value="COD"
+                                        checked={paymentMethod === "COD"}
+                                        onChange={(e) =>
+                                            setPaymentMethod(e.target.value)
+                                        }
+                                        className="accent-[#245C45]"
+                                    />
+
+                                    <span className="font-semibold text-gray-800">
+                                        Cash on Delivery (COD)
+                                    </span>
+                                </div>
+
+                                <p className="ml-6 mt-2 text-sm text-gray-500">
+                                    Pay when your order is delivered.
+                                </p>
                             </label>
 
-                            <p className="ml-6 mt-2 text-sm text-gray-500">
-                                Pay when your order is delivered.
-                            </p>
+                            {/* Razorpay */}
+                            <label className={`block cursor-pointer rounded-lg border p-4 ${
+                                paymentMethod === "Razorpay"
+                                    ? "border-[#245C45] bg-green-50"
+                                    : "border-gray-300"
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="radio"
+                                        name="paymentMethod"
+                                        value="Razorpay"
+                                        checked={paymentMethod === "Razorpay"}
+                                        onChange={(e) =>
+                                            setPaymentMethod(e.target.value)
+                                        }
+                                        className="accent-[#245C45]"
+                                    />
+
+                                    <span className="font-semibold text-gray-800">
+                                        Online Payment
+                                    </span>
+                                </div>
+
+                                <p className="ml-6 mt-2 text-sm text-gray-500">
+                                    Pay securely using UPI, Cards, Net Banking and more.
+                                </p>
+                            </label>
+
                         </div>
                     </div>
 
@@ -237,7 +398,12 @@ function Checkout() {
                         disabled={placingOrder || cartItems.length === 0}
                         className="mt-8 w-full rounded-lg bg-[#245C45] py-3 font-semibold text-white hover:bg-[#173B2E] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        {placingOrder ? "Placing Order..." : "Place Order"}
+                        {placingOrder
+                            ? "Processing..."
+                            : paymentMethod === "COD"
+                                ? "Place Order"
+                                : "Pay Now"
+                        }
                     </button>
                 </form>
 
