@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../config/firebase";
-import { getCart, updateCartQuantity, removeFromCart, clearCart} from "../services/cartService";
+import { getCart, updateCartQuantity, removeFromCart, clearCart } from "../services/cartService";
 
 function Cart() {
     const navigate = useNavigate();
@@ -138,7 +138,7 @@ function Cart() {
                                     key={product._id}
                                     className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row"
                                 >
-                                    <img src={product.image} alt={product.name} className="h-28 w-28 rounded-lg object-cover"/>
+                                    <img src={product.image} alt={product.name} className="h-28 w-28 rounded-lg object-cover" />
 
                                     <div className="flex flex-1 flex-col justify-between gap-3">
                                         <div>
@@ -149,7 +149,7 @@ function Cart() {
                                         <div className="flex flex-wrap items-center gap-3">
                                             <button
                                                 disabled={actionLoading === product._id || item.quantity <= 1}
-                                                onClick={() =>handleQuantity(product._id, item.quantity - 1)}
+                                                onClick={() => handleQuantity(product._id, item.quantity - 1)}
                                                 className="h-8 w-8 rounded border disabled:opacity-40"
                                             >
                                                 -
@@ -159,7 +159,7 @@ function Cart() {
 
                                             <button
                                                 disabled={actionLoading === product._id || item.quantity >= product.stock}
-                                                onClick={() =>handleQuantity(product._id, item.quantity + 1)}
+                                                onClick={() => handleQuantity(product._id, item.quantity + 1)}
                                                 className="h-8 w-8 rounded border disabled:opacity-40"
                                             >
                                                 +
@@ -197,10 +197,11 @@ function Cart() {
                         </div>
 
                         <button
-                            onClick={() => navigate("/products")}
+                            onClick={() => navigate("/checkout")}
                             className="mt-6 w-full rounded-lg bg-[#245C45] py-3 font-semibold text-white hover:bg-[#173B2E]"
                         >
-                            Continue Shopping
+                            Proceed to Checkout
+                            <i className="fa-solid fa-arrow-right ml-2" />
                         </button>
 
                         <button

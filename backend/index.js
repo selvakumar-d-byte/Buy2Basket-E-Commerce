@@ -16,6 +16,7 @@ const Product = require('./models/product');
 const Cart = require('./models/CartAPI');
 const Wishlist = require('./models/Wishlist');
 const verifyToken = require('./middleware/verifyToken');
+const Order = require('./models/Order');
 
 const app = express();
 const PORT = 5000;
@@ -490,6 +491,156 @@ app.delete('/cart/clear', verifyToken, async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+// PLACE ORDER
+app.post('/orders/place', verifyToken, async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const userId = req.user.uid;
+
+        const {
+            fullName,
+            phone,
+            email,
+            address,
+            city,
+            state,
+            pincode
+        } = req.body;
+
+        if (
+            !fullName ||
+            !phone ||
+            !email ||
+            !address ||
+            !city ||
+            !state ||
+            !pincode
+        ) {
+            return res.status(400).json({
+                message: 'Please fill all delivery address fields'
+            });
+        }
+
+        await session.withTransaction(async () => {
+            const cart = await Cart.findOne({ userId })
+                .populate('items.productId')
+                .session(session);
+
+            if (!cart || cart.items.length === 0) {
+                throw new Error('Your cart is empty');
+            }
+
+            let subtotal = 0;
+            const orderItems = [];
+
+            for (const item of cart.items) {
+                const product = item.productId;
+
+                if (!product) {
+                    throw new Error('A product in your cart is unavailable');
+                }
+
+                if (product.stock < item.quantity) {
+                    throw new Error(`${product.name} has insufficient stock`);
+                }
+
+                subtotal += product.price * item.quantity;
+
+                orderItems.push({
+                    productId: product._id,
+                    name: product.name,
+                    image: product.image,
+                    price: product.price,
+                    quantity: item.quantity
+                });
+            }
+
+            for (const item of cart.items) {
+                const result = await Product.updateOne(
+                    {
+                        _id: item.productId._id,
+                        stock: { $gte: item.quantity }
+                    },
+                    {
+                        $inc: { stock: -item.quantity }
+                    },
+                    { session }
+                );
+
+                if (result.modifiedCount !== 1) {
+                    throw new Error('Product stock changed. Please try again');
+                }
+            }
+
+            const deliveryCharge = 0;
+
+            const newOrder = await Order.create(
+                [{
+                    userId,
+                    items: orderItems,
+                    deliveryAddress: {
+                        fullName,
+                        phone,
+                        email,
+                        address,
+                        city,
+                        state,
+                        pincode
+                    },
+                    subtotal,
+                    deliveryCharge,
+                    totalAmount: subtotal + deliveryCharge,
+                    paymentMethod: 'COD',
+                    paymentStatus: 'Pending',
+                    orderStatus: 'Placed'
+                }],
+                { session }
+            );
+
+            cart.items = [];
+            await cart.save({ session });
+
+            res.status(201).json({
+                message: 'Order placed successfully',
+                order: newOrder[0]
+            });
+        });
+
+    } catch (error) {
+        console.error('Place order error:', error.message);
+
+        res.status(400).json({
+            message: error.message || 'Failed to place order'
+        });
+
+    } finally {
+        await session.endSession();
+    }
+});
+
+// GET MY ORDERS
+app.get('/orders/my-orders', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const orders = await Order.find({ userId })
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            count: orders.length,
+            orders
+        });
+
+    } catch (error) {
+        console.error('Fetch orders error:', error.message);
+
+        res.status(500).json({
+            message: 'Failed to fetch your orders'
+        });
     }
 });
 

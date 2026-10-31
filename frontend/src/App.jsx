@@ -9,6 +9,8 @@ import Products from "./pages/Products";
 import ProductDetails from "./pages/ProductDetails";
 import Cart from "./pages/Cart";
 import Wishlist from "./pages/Wishlist";
+import Checkout from "./pages/Checkout"; 
+import MyOrders from "./pages/MyOrders";
 import ScrollToTop from "./components/ScrollToTop";
 
 function App() {
@@ -26,6 +28,8 @@ function App() {
           <Route path="/products/:id" element={<ProductDetails />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/wishlist" element={<Wishlist />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/my-orders" element={<MyOrders />} />
         </Routes>
         <Footer />
       </BrowserRouter>
