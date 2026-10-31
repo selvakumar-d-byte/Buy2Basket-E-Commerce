@@ -51,16 +51,15 @@ function Footer() {
                                 { icon: faXTwitter, label: "X" },
                                 { icon: faYoutube, label: "YouTube" },
                             ].map((social) => (
-                                <a
+                                <p
                                     key={social.label}
-                                    href="#"
                                     aria-label={social.label}
                                     className="w-9 h-9 flex items-center justify-center
                                     rounded-full bg-white/10 hover:bg-[#245C45]
                                     transition-colors duration-200"
                                 >
                                     <FontAwesomeIcon icon={social.icon} />
-                                </a>
+                                </p>
                             ))}
                         </div>
                     </div>
@@ -80,13 +79,12 @@ function Footer() {
                                 "About Us",
                             ].map((item) => (
                                 <li key={item}>
-                                    <a
-                                        href="#"
+                                    <p
                                         className="hover:text-[#8ED6A9]
                                         transition-colors duration-200"
                                     >
                                         {item}
-                                    </a>
+                                    </p>
                                 </li>
                             ))}
                         </ul>
@@ -107,13 +105,12 @@ function Footer() {
                                 "Terms & Conditions",
                             ].map((item) => (
                                 <li key={item}>
-                                    <a
-                                        href="#"
+                                    <p
                                         className="hover:text-[#8ED6A9]
                                         transition-colors duration-200"
                                     >
                                         {item}
-                                    </a>
+                                    </p>
                                 </li>
                             ))}
                         </ul>
