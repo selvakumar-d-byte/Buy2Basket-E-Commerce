@@ -1,9 +1,8 @@
-
 import axios from "axios";
 import { auth } from "./firebase";
 
 const API = axios.create({
-    baseURL: "https://buy2basket-e-commerce-1.onrender.com"
+    baseURL: process.env.REACT_APP_API_URL
 });
 
 API.interceptors.request.use(
@@ -12,7 +11,6 @@ API.interceptors.request.use(
 
         if (user) {
             const token = await user.getIdToken();
-
             config.headers.Authorization = `Bearer ${token}`;
         }
 

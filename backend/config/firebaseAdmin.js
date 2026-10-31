@@ -6,9 +6,7 @@ if (!encodedServiceAccount) {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is missing");
 }
 
-const serviceAccount = JSON.parse(
-    Buffer.from(encodedServiceAccount, "base64").toString("utf8")
-);
+const serviceAccount = JSON.parse(encodedServiceAccount);
 
 const firebaseApp = getApps().length
     ? getApps()[0]
