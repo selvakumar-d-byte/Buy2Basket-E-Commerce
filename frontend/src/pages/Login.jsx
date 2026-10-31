@@ -21,7 +21,7 @@ function Login() {
 
     async function login()
     {
-        if(email=='' || password==''){
+        if(email==='' || password===''){
             alert('Please fill all fields')
             return;
         }

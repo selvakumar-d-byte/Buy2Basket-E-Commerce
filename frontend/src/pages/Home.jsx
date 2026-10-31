@@ -4,7 +4,6 @@ import axios from "axios";
 import cartImage from "../assets/images/cart.png";
 import { Link } from "react-router-dom";
 import { auth } from "../config/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 
 function Home() {
 
