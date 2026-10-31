@@ -13,8 +13,12 @@ function Checkout() {
     const [loading, setLoading] = useState(true);
     const [placingOrder, setPlacingOrder] = useState(false);
     const [error, setError] = useState("");
+
     const [paymentMethod, setPaymentMethod] = useState("COD");
-    const [demoCardNumber, setDemoCardNumber] = useState("");
+
+    const [cardNumber, setCardNumber] = useState("");
+    const [expiryDate, setExpiryDate] = useState("");
+    const [cvv, setCvv] = useState("");
 
     const [address, setAddress] = useState({
         fullName: "",
@@ -26,6 +30,7 @@ function Checkout() {
         pincode: ""
     });
 
+    // Load logged-in user and cart
     useEffect(() => {
         let active = true;
 
@@ -70,11 +75,13 @@ function Checkout() {
         };
     }, [navigate]);
 
+    // Calculate subtotal
     const subtotal = cartItems.reduce((sum, item) => {
         return sum +
             (item.productId?.price || 0) * item.quantity;
     }, 0);
 
+    // Address input handler
     const handleChange = (e) => {
         const { name, value } = e.target;
 
@@ -96,20 +103,41 @@ function Checkout() {
         navigate("/my-orders");
     };
 
-    // Demo Card Payment - No real transaction
-    const handleDemoPayment = async () => {
-        const cardNumber = demoCardNumber.replace(/\s/g, "");
+    // Card payment test flow
+    const handleCardPayment = async () => {
+        const cleanCardNumber = cardNumber.replace(/\s/g, "");
 
-        if (!/^\d{16}$/.test(cardNumber)) {
-            throw new Error("Please enter exactly 16 digits.");
+        if (!/^\d{16}$/.test(cleanCardNumber)) {
+            throw new Error("Please enter a valid 16-digit card number.");
         }
 
+        if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiryDate)) {
+            throw new Error("Please enter expiry date in MM/YY format.");
+        }
+
+        const [month, year] = expiryDate.split("/").map(Number);
+
+        const expiry = new Date(2000 + year, month);
+        const currentMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth()
+        );
+
+        if (expiry <= currentMonth) {
+            throw new Error("Your card has expired.");
+        }
+
+        if (!/^\d{3}$/.test(cvv)) {
+            throw new Error("Please enter a valid 3-digit CVV.");
+        }
+
+        // Only address is sent. Card details are not transmitted.
         const response = await API.post(
             "/payments/demo-success",
             address
         );
 
-        alert(response.data.message || "Demo payment successful!");
+        alert(response.data.message || "Test payment successful!");
 
         navigate("/my-orders");
     };
@@ -124,10 +152,9 @@ function Checkout() {
 
             if (paymentMethod === "COD") {
                 await handleCODOrder();
-            } else if (paymentMethod === "Demo") {
-                await handleDemoPayment();
+            } else if (paymentMethod === "Card") {
+                await handleCardPayment();
             }
-
         } catch (err) {
             setError(
                 err.response?.data?.message ||
@@ -149,6 +176,7 @@ function Checkout() {
 
     return (
         <main className="min-h-screen bg-gray-50 px-4 py-10 sm:px-8 lg:px-20">
+
             <h1 className="mb-8 text-3xl font-bold text-gray-900">
                 Checkout
             </h1>
@@ -240,6 +268,7 @@ function Checkout() {
 
                     {/* Payment Method */}
                     <div className="mt-8">
+
                         <h2 className="mb-4 text-xl font-bold text-gray-800">
                             Payment Method
                         </h2>
@@ -247,10 +276,13 @@ function Checkout() {
                         <div className="space-y-4">
 
                             {/* COD */}
-                            <label className={`block cursor-pointer rounded-lg border p-4 ${paymentMethod === "COD"
-                                ? "border-[#245C45] bg-green-50"
-                                : "border-gray-300"
-                                }`}>
+                            <label
+                                className={`block cursor-pointer rounded-lg border p-4 ${
+                                    paymentMethod === "COD"
+                                        ? "border-[#245C45] bg-green-50"
+                                        : "border-gray-300"
+                                }`}
+                            >
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="radio"
@@ -273,61 +305,130 @@ function Checkout() {
                                 </p>
                             </label>
 
-                            {/* Demo Card Payment */}
-                            <label className={`block cursor-pointer rounded-lg border p-4 ${paymentMethod === "Demo"
-                                ? "border-[#245C45] bg-green-50"
-                                : "border-gray-300"
-                                }`}>
+                            {/* Card Payment */}
+                            <label
+                                className={`block cursor-pointer rounded-lg border p-4 ${
+                                    paymentMethod === "Card"
+                                        ? "border-[#245C45] bg-green-50"
+                                        : "border-gray-300"
+                                }`}
+                            >
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="radio"
                                         name="paymentMethod"
-                                        value="Demo"
-                                        checked={paymentMethod === "Demo"}
-                                        onChange={(e) => setPaymentMethod(e.target.value)}
+                                        value="Card"
+                                        checked={paymentMethod === "Card"}
+                                        onChange={(e) =>
+                                            setPaymentMethod(e.target.value)
+                                        }
                                         className="accent-[#245C45]"
                                     />
 
                                     <span className="font-semibold text-gray-800">
-                                        Demo Card Payment
+                                        Card Payment
                                     </span>
                                 </div>
 
                                 <p className="ml-6 mt-2 text-sm text-gray-500">
-                                    For project demonstration only. No real payment.
+                                    Test mode — no real payment will be processed.
                                 </p>
                             </label>
 
-                            {paymentMethod === "Demo" && (
-                                <div className="mt-5">
-                                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                                        Demo Card Number
-                                    </label>
+                            {/* Card Details */}
+                            {paymentMethod === "Card" && (
+                                <div className="mt-5 space-y-5 rounded-lg border border-gray-200 bg-gray-50 p-5">
 
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        maxLength={16}
-                                        value={demoCardNumber}
-                                        onChange={(e) =>
-                                            setDemoCardNumber(
-                                                e.target.value.replace(/\D/g, "").slice(0, 16)
-                                            )
-                                        }
-                                        placeholder="Enter 16-digit demo card number"
-                                        required
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#245C45]"
-                                    />
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                                            Card Number
+                                        </label>
 
-                                    <p className="mt-2 text-xs text-orange-600">
-                                        Demo only — no card details are stored and no real transaction occurs.
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={16}
+                                            value={cardNumber}
+                                            onChange={(e) =>
+                                                setCardNumber(
+                                                    e.target.value
+                                                        .replace(/\D/g, "")
+                                                        .slice(0, 16)
+                                                )
+                                            }
+                                            placeholder="1234567890123456"
+                                            required
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 outline-none focus:border-[#245C45]"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                                                Expiry Date
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                maxLength={5}
+                                                value={expiryDate}
+                                                onChange={(e) => {
+                                                    let value = e.target.value
+                                                        .replace(/\D/g, "")
+                                                        .slice(0, 4);
+
+                                                    if (value.length > 2) {
+                                                        value =
+                                                            value.slice(0, 2) +
+                                                            "/" +
+                                                            value.slice(2);
+                                                    }
+
+                                                    setExpiryDate(value);
+                                                }}
+                                                placeholder="MM/YY"
+                                                required
+                                                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 outline-none focus:border-[#245C45]"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                                                CVV
+                                            </label>
+
+                                            <input
+                                                type="password"
+                                                inputMode="numeric"
+                                                maxLength={3}
+                                                value={cvv}
+                                                onChange={(e) =>
+                                                    setCvv(
+                                                        e.target.value
+                                                            .replace(/\D/g, "")
+                                                            .slice(0, 3)
+                                                    )
+                                                }
+                                                placeholder="123"
+                                                required
+                                                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 outline-none focus:border-[#245C45]"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <p className="text-xs text-orange-600">
+                                        Test mode only. Do not enter real card details.
+                                        No actual transaction will take place.
                                     </p>
+
                                 </div>
                             )}
-
                         </div>
                     </div>
 
+                    {/* Submit Button */}
                     <button
                         type="submit"
                         disabled={placingOrder || cartItems.length === 0}
@@ -337,18 +438,21 @@ function Checkout() {
                             ? "Processing..."
                             : paymentMethod === "COD"
                                 ? "Place Order"
-                                : "Complete Demo Payment"
+                                : "Complete Payment"
                         }
                     </button>
+
                 </form>
 
                 {/* Order Summary */}
                 <aside className="h-fit rounded-xl bg-white p-6 shadow-sm">
+
                     <h2 className="text-xl font-bold text-gray-800">
                         Order Summary
                     </h2>
 
                     <div className="mt-5 space-y-4">
+
                         {cartItems.map((item) => {
                             const product = item.productId;
 
@@ -386,6 +490,7 @@ function Checkout() {
                     </div>
 
                     <div className="mt-6 space-y-3 border-t pt-5">
+
                         <div className="flex justify-between text-gray-500">
                             <span>Subtotal</span>
                             <span>
@@ -402,12 +507,15 @@ function Checkout() {
 
                         <div className="flex justify-between border-t pt-4 text-lg font-bold">
                             <span>Total</span>
+
                             <span className="text-[#245C45]">
                                 ₹{subtotal.toLocaleString("en-IN")}
                             </span>
                         </div>
+
                     </div>
                 </aside>
+
             </div>
         </main>
     );
