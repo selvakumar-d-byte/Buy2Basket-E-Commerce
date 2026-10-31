@@ -1,17 +1,12 @@
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 
-const encodedServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-if (!encodedServiceAccount) {
+if (!serviceAccountJson) {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is missing");
 }
 
-const serviceAccount = JSON.parse(
-    Buffer.from(
-        process.env.FIREBASE_SERVICE_ACCOUNT,
-        "base64"
-    ).toString("utf8")
-);
+const serviceAccount = JSON.parse(serviceAccountJson);
 
 const firebaseApp = getApps().length
     ? getApps()[0]
