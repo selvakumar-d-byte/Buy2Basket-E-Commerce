@@ -1,21 +1,23 @@
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 
-const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT;
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-if (!serviceAccountBase64) {
+if (!serviceAccountJson) {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is missing");
 }
 
-const serviceAccountJson = Buffer
-    .from(serviceAccountBase64, "base64")
-    .toString("utf8");
+let serviceAccount;
 
-const serviceAccount = JSON.parse(serviceAccountJson);
+try {
+    serviceAccount = JSON.parse(serviceAccountJson);
+} catch (error) {
+    throw new Error("Invalid Firebase Service Account JSON format");
+}
 
 const firebaseApp = getApps().length
     ? getApps()[0]
     : initializeApp({
-        credential: cert(serviceAccount)
+        credential: cert(serviceAccount),
     });
 
 module.exports = firebaseApp;
