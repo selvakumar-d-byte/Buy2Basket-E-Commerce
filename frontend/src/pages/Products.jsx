@@ -56,8 +56,10 @@ function Products() {
 
                 setProducts(Array.isArray(data) ? data : data.products || []);
             } catch (err) {
+                console.error("Products API Error:", err);
+
                 if (err.name !== "AbortError") {
-                    setError("Unable to load products. Please try again.");
+                    setError(err.message);
                 }
             } finally {
                 if (!controller.signal.aborted) {
