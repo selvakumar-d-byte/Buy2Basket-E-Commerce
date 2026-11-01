@@ -1,29 +1,63 @@
 
-const dns = require('node:dns');
-dns.setServers(['1.1.1.1', '8.8.8.8']);
+const dns = require("node:dns");
+dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const multer = require('multer');
-const streamifier = require('streamifier');
-require('dotenv').config();
+require("dotenv").config();
+
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const multer = require("multer");
+const streamifier = require("streamifier");
 const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
 
-const cloudinary = require('./config/cloudinary');
-const Product = require('./models/product');
-const Cart = require('./models/CartAPI');
-const Wishlist = require('./models/Wishlist');
-const verifyToken = require('./middleware/verifyToken');
-const Order = require('./models/Order');
+const cloudinary = require("./config/cloudinary");
+const Product = require("./models/product");
+const Cart = require("./models/CartAPI");
+const Wishlist = require("./models/Wishlist");
+const verifyToken = require("./middleware/verifyToken");
+const Order = require("./models/Order");
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// --------------------------------------------------
+// ENVIRONMENT VALIDATION
+// --------------------------------------------------
+
+if (!process.env.MONGODB_URL) {
+    throw new Error("MONGODB_URL is missing");
+}
+
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn("Warning: Email environment variables are missing");
+}
+
+// --------------------------------------------------
+// MIDDLEWARE
+// --------------------------------------------------
+
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "http://localhost:3000"
+].filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error("Not allowed by CORS"));
+    }
+}));
+
+app.use(express.json({ limit: "1mb" }));
+
+// --------------------------------------------------
+// EMAIL CONFIGURATION
+// --------------------------------------------------
 
 const otpStore = new Map();
 
@@ -35,16 +69,40 @@ const mailTransporter = nodemailer.createTransport({
     }
 });
 
-// Send email OTP
+// --------------------------------------------------
+// SEND SIGNUP OTP
+// --------------------------------------------------
+
 app.post("/send-signup-otp", async (req, res) => {
     try {
-        const email = String(req.body.email || '').trim().toLowerCase();
+        const email = String(req.body.email || "")
+            .trim()
+            .toLowerCase();
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
         if (!emailRegex.test(email)) {
             return res.status(400).json({
                 message: "Please enter a valid email address"
+            });
+        }
+
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            return res.status(503).json({
+                message: "Email service is not configured"
+            });
+        }
+
+        const existingRecord = otpStore.get(email);
+
+        // Prevent frequent OTP requests
+        if (
+            existingRecord &&
+            existingRecord.lastSentAt &&
+            Date.now() - existingRecord.lastSentAt < 60 * 1000
+        ) {
+            return res.status(429).json({
+                message: "Please wait before requesting another OTP"
             });
         }
 
@@ -60,24 +118,32 @@ app.post("/send-signup-otp", async (req, res) => {
         otpStore.set(email, {
             otp,
             expiresAt: Date.now() + 5 * 60 * 1000,
-            attempts: 0
+            attempts: 0,
+            lastSentAt: Date.now()
         });
 
-        res.json({
+        return res.status(200).json({
             message: "OTP sent successfully to your email"
         });
+
     } catch (error) {
         console.error("OTP email error:", error.message);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Failed to send OTP. Please try again."
         });
     }
 });
 
-// Verify email OTP
+// --------------------------------------------------
+// VERIFY SIGNUP OTP
+// --------------------------------------------------
+
 app.post("/verify-signup-otp", (req, res) => {
-    const email = String(req.body.email || "").trim().toLowerCase();
+    const email = String(req.body.email || "")
+        .trim()
+        .toLowerCase();
+
     const enteredOtp = String(req.body.otp || "").trim();
 
     const record = otpStore.get(email);
@@ -114,79 +180,108 @@ app.post("/verify-signup-otp", (req, res) => {
 
     otpStore.delete(email);
 
-    res.json({
+    return res.status(200).json({
         verified: true,
         message: "Email verified successfully"
     });
 });
 
-// Multer: receive images in memory
+// --------------------------------------------------
+// MULTER IMAGE UPLOAD CONFIGURATION
+// --------------------------------------------------
+
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URL)
-    .then(() => {
-        console.log('DB Connected');
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/jpg"
+        ];
 
-        app.listen(PORT, () => {
-            console.log(`Server started on port ${PORT}`);
-        });
-    })
-    .catch((error) => {
-        console.log('DB failed:', error.message);
+        if (allowedTypes.includes(file.mimetype)) {
+            return cb(null, true);
+        }
+
+        return cb(new Error("Only JPG, PNG and WEBP images are allowed"));
+    }
+});
+
+// --------------------------------------------------
+// CLOUDINARY UPLOAD HELPER
+// --------------------------------------------------
+
+const uploadToCloudinary = (buffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: "buy2basket/products"
+            },
+            (error, result) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                resolve(result);
+            }
+        );
+
+        streamifier
+            .createReadStream(buffer)
+            .pipe(uploadStream);
     });
+};
 
-// Home / API test
-app.get('/', (req, res) => {
-    res.json({
-        message: 'Buy2Basket API is running'
+// --------------------------------------------------
+// HOME / API TEST
+// --------------------------------------------------
+
+app.get("/", (req, res) => {
+    res.status(200).json({
+        message: "Buy2Basket API is running"
     });
 });
 
-// Upload image to Cloudinary (testing API)
-app.post('/upload-image', upload.single('image'), async (req, res) => {
+// --------------------------------------------------
+// UPLOAD IMAGE TO CLOUDINARY
+// --------------------------------------------------
+
+app.post("/upload-image", upload.single("image"), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
-                message: 'Please select an image'
+                message: "Please select an image"
             });
         }
 
-        const result = await new Promise((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: 'buy2basket/products'
-                },
-                (error, uploadResult) => {
-                    if (error) {
-                        return reject(error);
-                    }
+        const result = await uploadToCloudinary(req.file.buffer);
 
-                    resolve(uploadResult);
-                }
-            );
-
-            streamifier
-                .createReadStream(req.file.buffer)
-                .pipe(uploadStream);
-        });
-
-        res.status(200).json({
-            message: 'Image uploaded successfully',
+        return res.status(200).json({
+            message: "Image uploaded successfully",
             imageUrl: result.secure_url,
             publicId: result.public_id
         });
+
     } catch (error) {
-        res.status(500).json({
-            message: 'Image upload failed',
-            error: error.message
+        console.error("Image upload error:", error.message);
+
+        return res.status(500).json({
+            message: "Image upload failed"
         });
     }
 });
 
-// Add product + image to MongoDB
-app.post('/products', upload.single('image'), async (req, res) => {
+// --------------------------------------------------
+// ADD PRODUCT
+// --------------------------------------------------
+
+app.post("/products", upload.single("image"), async (req, res) => {
     try {
         const {
             name,
@@ -200,138 +295,198 @@ app.post('/products', upload.single('image'), async (req, res) => {
             brand
         } = req.body;
 
-        // Validate required fields
         if (
             !name ||
             !category ||
             price === undefined ||
-            price === '' ||
+            price === "" ||
             originalPrice === undefined ||
-            originalPrice === ''
+            originalPrice === ""
         ) {
             return res.status(400).json({
-                message: 'Name, category, price and originalPrice are required'
+                message: "Name, category, price and originalPrice are required"
             });
         }
 
         if (!req.file) {
             return res.status(400).json({
-                message: 'Please select a product image'
+                message: "Please select a product image"
             });
         }
 
-        // Upload product image to Cloudinary
-        const result = await new Promise((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: 'buy2basket/products'
-                },
-                (error, uploadResult) => {
-                    if (error) {
-                        return reject(error);
-                    }
+        const productPrice = Number(price);
+        const productOriginalPrice = Number(originalPrice);
+        const productDiscount = discount === undefined || discount === ""
+            ? 0
+            : Number(discount);
+        const productRating = rating === undefined || rating === ""
+            ? 4
+            : Number(rating);
+        const productStock = stock === undefined || stock === ""
+            ? 10
+            : Number(stock);
 
-                    resolve(uploadResult);
-                }
-            );
+        if (
+            !Number.isFinite(productPrice) ||
+            !Number.isFinite(productOriginalPrice) ||
+            productPrice < 0 ||
+            productOriginalPrice < 0
+        ) {
+            return res.status(400).json({
+                message: "Please enter valid product prices"
+            });
+        }
 
-            streamifier
-                .createReadStream(req.file.buffer)
-                .pipe(uploadStream);
-        });
+        if (
+            !Number.isFinite(productDiscount) ||
+            productDiscount < 0 ||
+            productDiscount > 100
+        ) {
+            return res.status(400).json({
+                message: "Discount must be between 0 and 100"
+            });
+        }
 
-        // Create product document
+        if (
+            !Number.isFinite(productRating) ||
+            productRating < 0 ||
+            productRating > 5
+        ) {
+            return res.status(400).json({
+                message: "Rating must be between 0 and 5"
+            });
+        }
+
+        if (
+            !Number.isInteger(productStock) ||
+            productStock < 0
+        ) {
+            return res.status(400).json({
+                message: "Stock must be a valid non-negative integer"
+            });
+        }
+
+        const result = await uploadToCloudinary(req.file.buffer);
+
         const product = new Product({
-            name,
-            category,
-            price: Number(price),
-            originalPrice: Number(originalPrice),
-            discount: discount ? Number(discount) : 0,
-            rating: rating ? Number(rating) : 4,
-            stock: stock !== undefined && stock !== ''
-                ? Number(stock)
-                : 10,
-            description: description || '',
-            brand: brand || 'Buy2Basket',
+            name: name.trim(),
+            category: category.trim(),
+            price: productPrice,
+            originalPrice: productOriginalPrice,
+            discount: productDiscount,
+            rating: productRating,
+            stock: productStock,
+            description: description || "",
+            brand: brand || "Buy2Basket",
             image: result.secure_url
         });
 
-        // Save product in MongoDB
         const savedProduct = await product.save();
 
-        res.status(201).json({
-            message: 'Product added successfully',
+        return res.status(201).json({
+            message: "Product added successfully",
             product: savedProduct
         });
+
     } catch (error) {
-        res.status(500).json({
-            message: 'Failed to add product',
-            error: error.message
+        console.error("Add product error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to add product"
         });
     }
 });
 
-// Get all products
-app.get('/products', async (req, res) => {
-    try {
-        const products = await Product.find().sort({ createdAt: -1 });
+// --------------------------------------------------
+// GET ALL PRODUCTS
+// --------------------------------------------------
 
-        res.status(200).json({
+app.get("/products", async (req, res) => {
+    try {
+        const products = await Product.find()
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
             count: products.length,
             products
         });
+
     } catch (error) {
-        res.status(500).json({
-            message: 'Failed to fetch products',
-            error: error.message
+        console.error("Fetch products error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch products"
         });
     }
 });
 
-// Get one product by ID
-app.get('/products/:id', async (req, res) => {
+// --------------------------------------------------
+// GET PRODUCT BY ID
+// --------------------------------------------------
+
+app.get("/products/:id", async (req, res) => {
     try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
+        }
+
         const product = await Product.findById(req.params.id);
 
         if (!product) {
             return res.status(404).json({
-                message: 'Product not found'
+                message: "Product not found"
             });
         }
 
-        res.status(200).json(product);
+        return res.status(200).json(product);
+
     } catch (error) {
-        res.status(400).json({
-            message: 'Invalid product ID or request failed',
-            error: error.message
+        console.error("Get product error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch product"
         });
     }
 });
 
+// --------------------------------------------------
 // ADD TO CART
-app.post('/cart/add', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.post("/cart/add", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
         const { productId } = req.body;
 
         if (!mongoose.isValidObjectId(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID' });
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
         }
 
         const product = await Product.findById(productId);
 
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({
+                message: "Product not found"
+            });
         }
 
         if (product.stock < 1) {
-            return res.status(400).json({ message: 'Product is out of stock' });
+            return res.status(400).json({
+                message: "Product is out of stock"
+            });
         }
 
         let cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            cart = new Cart({ userId, items: [] });
+            cart = new Cart({
+                userId,
+                items: []
+            });
         }
 
         const existingItem = cart.items.find(
@@ -341,11 +496,12 @@ app.post('/cart/add', verifyToken, async (req, res) => {
         if (existingItem) {
             if (existingItem.quantity >= product.stock) {
                 return res.status(400).json({
-                    message: 'Maximum available stock reached'
+                    message: "Maximum available stock reached"
                 });
             }
 
             existingItem.quantity += 1;
+
         } else {
             cart.items.push({
                 productId,
@@ -355,65 +511,85 @@ app.post('/cart/add', verifyToken, async (req, res) => {
 
         await cart.save();
 
-        res.status(200).json({
-            message: 'Product added to cart',
+        return res.status(200).json({
+            message: "Product added to cart",
             cart
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Add cart error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to add product to cart"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // GET CART
-app.get('/cart', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.get("/cart", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
 
         const cart = await Cart.findOne({ userId })
-            .populate('items.productId');
+            .populate("items.productId");
 
-        res.status(200).json({
+        return res.status(200).json({
             items: cart ? cart.items : []
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Get cart error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch cart"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // UPDATE CART QUANTITY
-app.put('/cart/update', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.put("/cart/update", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
         const { productId, quantity } = req.body;
 
         if (!mongoose.isValidObjectId(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID' });
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
         }
 
         if (!Number.isInteger(quantity) || quantity < 1) {
-            return res.status(400).json({ message: 'Invalid quantity' });
+            return res.status(400).json({
+                message: "Invalid quantity"
+            });
         }
 
         const product = await Product.findById(productId);
 
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({
+                message: "Product not found"
+            });
         }
 
         if (quantity > product.stock) {
             return res.status(400).json({
-                message: 'Requested quantity exceeds available stock'
+                message: "Requested quantity exceeds available stock"
             });
         }
 
         const cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            return res.status(404).json({ message: 'Cart not found' });
+            return res.status(404).json({
+                message: "Cart not found"
+            });
         }
 
         const item = cart.items.find(
@@ -421,38 +597,50 @@ app.put('/cart/update', verifyToken, async (req, res) => {
         );
 
         if (!item) {
-            return res.status(404).json({ message: 'Product not found in cart' });
+            return res.status(404).json({
+                message: "Product not found in cart"
+            });
         }
 
         item.quantity = quantity;
 
         await cart.save();
 
-        res.status(200).json({
-            message: 'Cart quantity updated',
+        return res.status(200).json({
+            message: "Cart quantity updated",
             cart
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Update cart error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to update cart"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // REMOVE FROM CART
-app.delete('/cart/remove', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.delete("/cart/remove", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
         const { productId } = req.body;
 
         if (!mongoose.isValidObjectId(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID' });
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
         }
 
         const cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            return res.status(404).json({ message: 'Cart not found' });
+            return res.status(404).json({
+                message: "Cart not found"
+            });
         }
 
         cart.items = cart.items.filter(
@@ -461,77 +649,70 @@ app.delete('/cart/remove', verifyToken, async (req, res) => {
 
         await cart.save();
 
-        res.status(200).json({
-            message: 'Product removed from cart',
+        return res.status(200).json({
+            message: "Product removed from cart",
             cart
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Remove cart error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to remove product from cart"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // CLEAR CART
-app.delete('/cart/clear', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.delete("/cart/clear", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
 
         const cart = await Cart.findOne({ userId });
 
         if (!cart) {
-            return res.status(200).json({ message: 'Cart is already empty' });
+            return res.status(200).json({
+                message: "Cart is already empty"
+            });
         }
 
         cart.items = [];
 
         await cart.save();
 
-        res.status(200).json({ message: 'Cart cleared successfully' });
+        return res.status(200).json({
+            message: "Cart cleared successfully"
+        });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Clear cart error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to clear cart"
+        });
     }
 });
 
-// PLACE ORDER
-app.post('/orders/place', verifyToken, async (req, res) => {
+// --------------------------------------------------
+// SHARED ORDER CREATION FUNCTION
+// --------------------------------------------------
+
+const createOrderFromCart = async (userId, address, paymentMethod, paymentStatus) => {
     const session = await mongoose.startSession();
 
+    let savedOrder;
+
     try {
-        const userId = req.user.uid;
-
-        const {
-            fullName,
-            phone,
-            email,
-            address,
-            city,
-            state,
-            pincode
-        } = req.body;
-
-        if (
-            !fullName ||
-            !phone ||
-            !email ||
-            !address ||
-            !city ||
-            !state ||
-            !pincode
-        ) {
-            return res.status(400).json({
-                message: 'Please fill all delivery address fields'
-            });
-        }
-
         await session.withTransaction(async () => {
             const cart = await Cart.findOne({ userId })
-                .populate('items.productId')
+                .populate("items.productId")
                 .session(session);
 
             if (!cart || cart.items.length === 0) {
-                throw new Error('Your cart is empty');
+                throw new Error("Your cart is empty");
             }
 
             let subtotal = 0;
@@ -541,7 +722,7 @@ app.post('/orders/place', verifyToken, async (req, res) => {
                 const product = item.productId;
 
                 if (!product) {
-                    throw new Error('A product in your cart is unavailable');
+                    throw new Error("A product in your cart is unavailable");
                 }
 
                 if (product.stock < item.quantity) {
@@ -559,6 +740,7 @@ app.post('/orders/place', verifyToken, async (req, res) => {
                 });
             }
 
+            // Reduce product stock safely
             for (const item of cart.items) {
                 const result = await Product.updateOne(
                     {
@@ -566,144 +748,17 @@ app.post('/orders/place', verifyToken, async (req, res) => {
                         stock: { $gte: item.quantity }
                     },
                     {
-                        $inc: { stock: -item.quantity }
+                        $inc: {
+                            stock: -item.quantity
+                        }
                     },
                     { session }
                 );
 
                 if (result.modifiedCount !== 1) {
-                    throw new Error('Product stock changed. Please try again');
-                }
-            }
-
-            const deliveryCharge = 0;
-
-            const newOrder = await Order.create(
-                [{
-                    userId,
-                    items: orderItems,
-                    deliveryAddress: {
-                        fullName,
-                        phone,
-                        email,
-                        address,
-                        city,
-                        state,
-                        pincode
-                    },
-                    subtotal,
-                    deliveryCharge,
-                    totalAmount: subtotal + deliveryCharge,
-                    paymentMethod: 'COD',
-                    paymentStatus: 'Pending',
-                    orderStatus: 'Placed'
-                }],
-                { session }
-            );
-
-            cart.items = [];
-            await cart.save({ session });
-
-            res.status(201).json({
-                message: 'Order placed successfully',
-                order: newOrder[0]
-            });
-        });
-
-    } catch (error) {
-        console.error('Place order error:', error.message);
-
-        res.status(400).json({
-            message: error.message || 'Failed to place order'
-        });
-
-    } finally {
-        await session.endSession();
-    }
-});
-
-// DEMO CARD PAYMENT (SIMULATION ONLY)
-app.post('/payments/demo-success', verifyToken, async (req, res) => {
-    const session = await mongoose.startSession();
-
-    try {
-        const userId = req.user.uid;
-
-        const {
-            fullName,
-            phone,
-            email,
-            address,
-            city,
-            state,
-            pincode
-        } = req.body;
-
-        if (
-            !fullName ||
-            !phone ||
-            !email ||
-            !address ||
-            !city ||
-            !state ||
-            !pincode
-        ) {
-            return res.status(400).json({
-                message: 'Please fill all delivery address fields'
-            });
-        }
-
-        let savedOrder;
-
-        await session.withTransaction(async () => {
-            const cart = await Cart.findOne({ userId })
-                .populate('items.productId')
-                .session(session);
-
-            if (!cart || cart.items.length === 0) {
-                throw new Error('Your cart is empty');
-            }
-
-            let subtotal = 0;
-            const orderItems = [];
-
-            for (const item of cart.items) {
-                const product = item.productId;
-
-                if (!product) {
-                    throw new Error('A product in your cart is unavailable');
-                }
-
-                if (product.stock < item.quantity) {
-                    throw new Error(`${product.name} has insufficient stock`);
-                }
-
-                subtotal += product.price * item.quantity;
-
-                orderItems.push({
-                    productId: product._id,
-                    name: product.name,
-                    image: product.image,
-                    price: product.price,
-                    quantity: item.quantity
-                });
-            }
-
-            // Reduce stock safely
-            for (const item of cart.items) {
-                const result = await Product.updateOne(
-                    {
-                        _id: item.productId._id,
-                        stock: { $gte: item.quantity }
-                    },
-                    {
-                        $inc: { stock: -item.quantity }
-                    },
-                    { session }
-                );
-
-                if (result.modifiedCount !== 1) {
-                    throw new Error('Product stock changed. Please try again');
+                    throw new Error(
+                        "Product stock changed. Please try again"
+                    );
                 }
             }
 
@@ -711,21 +766,13 @@ app.post('/payments/demo-success', verifyToken, async (req, res) => {
                 [{
                     userId,
                     items: orderItems,
-                    deliveryAddress: {
-                        fullName,
-                        phone,
-                        email,
-                        address,
-                        city,
-                        state,
-                        pincode
-                    },
+                    deliveryAddress: address,
                     subtotal,
                     deliveryCharge: 0,
                     totalAmount: subtotal,
-                    paymentMethod: 'Demo Card',
-                    paymentStatus: 'Simulated',
-                    orderStatus: 'Placed'
+                    paymentMethod,
+                    paymentStatus,
+                    orderStatus: "Placed"
                 }],
                 { session }
             );
@@ -733,68 +780,204 @@ app.post('/payments/demo-success', verifyToken, async (req, res) => {
             savedOrder = newOrder[0];
 
             cart.items = [];
+
             await cart.save({ session });
         });
 
-        return res.status(201).json({
-            message: 'Demo payment successful. No real payment was processed.',
-            order: savedOrder
-        });
-
-    } catch (error) {
-        console.error('Demo payment error:', error.message);
-
-        return res.status(400).json({
-            message: error.message || 'Demo payment failed'
-        });
+        return savedOrder;
 
     } finally {
         await session.endSession();
     }
+};
+
+// --------------------------------------------------
+// VALIDATE DELIVERY ADDRESS
+// --------------------------------------------------
+
+const validateDeliveryAddress = (body) => {
+    const {
+        fullName,
+        phone,
+        email,
+        address,
+        city,
+        state,
+        pincode
+    } = body;
+
+    if (
+        !fullName ||
+        !phone ||
+        !email ||
+        !address ||
+        !city ||
+        !state ||
+        !pincode
+    ) {
+        return null;
+    }
+
+    return {
+        fullName: String(fullName).trim(),
+        phone: String(phone).trim(),
+        email: String(email).trim(),
+        address: String(address).trim(),
+        city: String(city).trim(),
+        state: String(state).trim(),
+        pincode: String(pincode).trim()
+    };
+};
+
+// --------------------------------------------------
+// PLACE COD ORDER
+// --------------------------------------------------
+
+app.post("/orders/place", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const deliveryAddress = validateDeliveryAddress(req.body);
+
+        if (!deliveryAddress) {
+            return res.status(400).json({
+                message: "Please fill all delivery address fields"
+            });
+        }
+
+        const order = await createOrderFromCart(
+            userId,
+            deliveryAddress,
+            "COD",
+            "Pending"
+        );
+
+        return res.status(201).json({
+            message: "Order placed successfully",
+            order
+        });
+
+    } catch (error) {
+        console.error("Place order error:", error.message);
+
+        const clientErrors = [
+            "Your cart is empty",
+            "A product in your cart is unavailable",
+            "Product stock changed. Please try again"
+        ];
+
+        const isClientError =
+            clientErrors.includes(error.message) ||
+            error.message.includes("has insufficient stock");
+
+        return res.status(isClientError ? 400 : 500).json({
+            message: error.message || "Failed to place order"
+        });
+    }
 });
 
+// --------------------------------------------------
+// DEMO CARD PAYMENT (SIMULATION ONLY)
+// --------------------------------------------------
+
+app.post("/payments/demo-success", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        const deliveryAddress = validateDeliveryAddress(req.body);
+
+        if (!deliveryAddress) {
+            return res.status(400).json({
+                message: "Please fill all delivery address fields"
+            });
+        }
+
+        const order = await createOrderFromCart(
+            userId,
+            deliveryAddress,
+            "Demo Card",
+            "Simulated"
+        );
+
+        return res.status(201).json({
+            message: "Demo payment successful. No real payment was processed.",
+            order
+        });
+
+    } catch (error) {
+        console.error("Demo payment error:", error.message);
+
+        const clientErrors = [
+            "Your cart is empty",
+            "A product in your cart is unavailable",
+            "Product stock changed. Please try again"
+        ];
+
+        const isClientError =
+            clientErrors.includes(error.message) ||
+            error.message.includes("has insufficient stock");
+
+        return res.status(isClientError ? 400 : 500).json({
+            message: error.message || "Demo payment failed"
+        });
+    }
+});
+
+// --------------------------------------------------
 // GET MY ORDERS
-app.get('/orders/my-orders', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.get("/orders/my-orders", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
 
         const orders = await Order.find({ userId })
             .sort({ createdAt: -1 });
 
-        res.status(200).json({
+        return res.status(200).json({
             count: orders.length,
             orders
         });
 
     } catch (error) {
-        console.error('Fetch orders error:', error.message);
+        console.error("Fetch orders error:", error.message);
 
-        res.status(500).json({
-            message: 'Failed to fetch your orders'
+        return res.status(500).json({
+            message: "Failed to fetch your orders"
         });
     }
 });
 
+// --------------------------------------------------
 // ADD TO WISHLIST
-app.post('/wishlist/add', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.post("/wishlist/add", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
         const { productId } = req.body;
 
         if (!mongoose.isValidObjectId(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID' });
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
         }
 
         const product = await Product.findById(productId);
 
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({
+                message: "Product not found"
+            });
         }
 
         let wishlist = await Wishlist.findOne({ userId });
 
         if (!wishlist) {
-            wishlist = new Wishlist({ userId, productIds: [] });
+            wishlist = new Wishlist({
+                userId,
+                productIds: []
+            });
         }
 
         const alreadyExists = wishlist.productIds.some(
@@ -803,7 +986,7 @@ app.post('/wishlist/add', verifyToken, async (req, res) => {
 
         if (alreadyExists) {
             return res.status(200).json({
-                message: 'Product already in wishlist'
+                message: "Product already in wishlist"
             });
         }
 
@@ -811,49 +994,65 @@ app.post('/wishlist/add', verifyToken, async (req, res) => {
 
         await wishlist.save();
 
-        res.status(200).json({
-            message: 'Product added to wishlist',
+        return res.status(200).json({
+            message: "Product added to wishlist",
             wishlist
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Add wishlist error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to add product to wishlist"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // GET WISHLIST
-app.get('/wishlist', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.get("/wishlist", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
 
         const wishlist = await Wishlist.findOne({ userId })
-            .populate('productIds');
+            .populate("productIds");
 
-        res.status(200).json({
+        return res.status(200).json({
             productIds: wishlist ? wishlist.productIds : []
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Get wishlist error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch wishlist"
+        });
     }
 });
 
-
+// --------------------------------------------------
 // REMOVE FROM WISHLIST
-app.delete('/wishlist/remove', verifyToken, async (req, res) => {
+// --------------------------------------------------
+
+app.delete("/wishlist/remove", verifyToken, async (req, res) => {
     try {
         const userId = req.user.uid;
         const { productId } = req.body;
 
         if (!mongoose.isValidObjectId(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID' });
+            return res.status(400).json({
+                message: "Invalid product ID"
+            });
         }
 
         const wishlist = await Wishlist.findOne({ userId });
 
         if (!wishlist) {
-            return res.status(404).json({ message: 'Wishlist not found' });
+            return res.status(404).json({
+                message: "Wishlist not found"
+            });
         }
 
         wishlist.productIds = wishlist.productIds.filter(
@@ -862,11 +1061,68 @@ app.delete('/wishlist/remove', verifyToken, async (req, res) => {
 
         await wishlist.save();
 
-        res.status(200).json({
-            message: 'Product removed from wishlist'
+        return res.status(200).json({
+            message: "Product removed from wishlist"
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Remove wishlist error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to remove product from wishlist"
+        });
     }
 });
+
+// --------------------------------------------------
+// MULTER ERROR HANDLER
+// --------------------------------------------------
+
+app.use((error, req, res, next) => {
+    if (error instanceof multer.MulterError) {
+        if (error.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({
+                message: "Image size must be less than 5 MB"
+            });
+        }
+
+        return res.status(400).json({
+            message: error.message
+        });
+    }
+
+    if (error.message.includes("Only JPG")) {
+        return res.status(400).json({
+            message: error.message
+        });
+    }
+
+    if (error.message === "Not allowed by CORS") {
+        return res.status(403).json({
+            message: "Origin not allowed"
+        });
+    }
+
+    console.error("Server error:", error.message);
+
+    return res.status(500).json({
+        message: "Internal server error"
+    });
+});
+
+// --------------------------------------------------
+// MONGODB CONNECTION AND SERVER START
+// --------------------------------------------------
+
+mongoose.connect(process.env.MONGODB_URL)
+    .then(() => {
+        console.log("DB Connected");
+
+        app.listen(PORT, () => {
+            console.log(`Buy2Basket server started on port ${PORT}`);
+        });
+    })
+    .catch((error) => {
+        console.error("DB connection failed:", error.message);
+        process.exit(1);
+    });

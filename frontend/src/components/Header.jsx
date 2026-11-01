@@ -72,6 +72,10 @@ function Header() {
                     <i className="fa-solid fa-cart-shopping text-[#245C45]"></i> Cart
                 </Link>
 
+                <Link to={'/my-orders'} className="cursor-pointer hidden min-[425px]:inline-block">
+                    <i className="fa-solid fa-truck text-[#245C45]"></i> Orders
+                </Link>
+
                 <Link to={'/products'} onClick={() => setMenuOpen(false)}>
                     <i class="fa-solid fa-bag-shopping text-[#245C45]"></i> Products
                 </Link>
@@ -84,7 +88,7 @@ function Header() {
                     <i class="fa-solid fa-phone text-[#245C45]"></i> Contact
                 </Link>
 
-                {user ? (<button onClick={async () => { await signOut(auth); setMenuOpen(false); alert('Logout Successfully')}} className="px-3 py-2 text-white bg-red-600 rounded-xl"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>) :
+                {user ? (<button onClick={async () => { await signOut(auth); setMenuOpen(false); alert('Logout Successfully') }} className="px-3 py-2 text-white bg-red-600 rounded-xl"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>) :
                     (<Link to={'/login'} onClick={() => setMenuOpen(false)} className="px-3 py-2 text-white bg-[#245C45] rounded-xl"><i class="fa-solid fa-arrow-right-to-bracket"></i> Login</Link>)}
             </div>
 
@@ -99,8 +103,9 @@ function Header() {
             <div className=" flex gap-4 sm:gap-8 md:gap-14 items-center text-gray-700 text-sm md:text-base ">
                 <Link to={'/wishlist'} className="cursor-pointer hidden min-[425px]:inline-block"><i className="fa-regular fa-heart"></i> <span className="hidden sm:inline-block">wishlist</span></Link>
                 <Link to={'/cart'} className="cursor-pointer hidden min-[425px]:inline-block"><i className="fa-solid fa-cart-shopping"></i> <span className="hidden sm:inline-block">cart</span> </Link>
-                {user ? <button onClick={async () => { await signOut(auth); setMenuOpen(false); alert('Logout Successfully')}} className="px-3 py-2 text-white bg-red-600 rounded-xl"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button> 
-                : <Link to={'/login'} onClick={() => setMenuOpen(false)} className="px-3 py-2 text-white bg-[#245C45] rounded-xl"><i class="fa-solid fa-arrow-right-to-bracket"></i> Login</Link>}
+                <Link to={'/my-orders'} className="cursor-pointer hidden min-[425px]:inline-block"><i className="fa-solid fa-truck"></i> <span className="hidden sm:inline-block">Orders</span> </Link>
+                {user ? <button onClick={async () => { await signOut(auth); setMenuOpen(false); alert('Logout Successfully') }} className="px-3 py-2 text-white bg-red-600 rounded-xl"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+                    : <Link to={'/login'} onClick={() => setMenuOpen(false)} className="px-3 py-2 text-white bg-[#245C45] rounded-xl"><i class="fa-solid fa-arrow-right-to-bracket"></i> Login</Link>}
 
             </div>
         </header >

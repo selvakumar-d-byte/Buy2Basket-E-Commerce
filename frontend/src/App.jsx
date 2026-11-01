@@ -11,6 +11,9 @@ import Cart from "./pages/Cart";
 import Wishlist from "./pages/Wishlist";
 import Checkout from "./pages/Checkout"; 
 import MyOrders from "./pages/MyOrders";
+import Deals from "./pages/Deals";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
 import ScrollToTop from "./components/ScrollToTop";
 
 function App() {
@@ -29,6 +32,9 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/deals" element={<Deals />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/my-orders" element={<MyOrders />} />
         </Routes>
         <Footer />

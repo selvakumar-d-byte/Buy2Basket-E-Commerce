@@ -34,7 +34,6 @@ function Products() {
     const [wishlistLoading, setWishlistLoading] = useState(true);
     const [cartLoading, setCartLoading] = useState(null);
     const [wishlistActionLoading, setWishlistActionLoading] = useState(null);
-    const [message, setMessage] = useState("");
 
     useEffect(() => {
         const controller = new AbortController();
@@ -58,9 +57,7 @@ function Products() {
                 setProducts(Array.isArray(data) ? data : data.products || []);
             } catch (err) {
                 if (err.name !== "AbortError") {
-                    setError(
-                        "Products load aagala. Backend server and API route check pannunga."
-                    );
+                    setError("Unable to load products. Please try again.");
                 }
             } finally {
                 if (!controller.signal.aborted) {
@@ -157,22 +154,15 @@ function Products() {
                 setWishlist((previous) =>
                     previous.filter((item) => item !== id)
                 );
-
-                setMessage("Product removed from wishlist");
             } else {
                 await addToWishlist(id);
 
                 setWishlist((previous) =>
                     previous.includes(id) ? previous : [...previous, id]
                 );
-
-                setMessage("Product added to wishlist");
             }
         } catch (error) {
             console.error("Wishlist error:", error);
-            setMessage(
-                error.response?.data?.message || "Wishlist update failed"
-            );
         } finally {
             setWishlistActionLoading(null);
         }
@@ -182,22 +172,18 @@ function Products() {
         const user = auth.currentUser;
 
         if (!user) {
+            alert('Please log in to add products to your cart.')
             navigate("/login");
             return;
         }
 
         try {
             setCartLoading(id);
-
             const response = await addToCart(id);
-
-            setMessage(response.message || "Product added to cart");
+            alert('	Product added to your cart successfully!')
         } catch (error) {
             console.error("Add to cart error:", error);
-
-            setMessage(
-                error.response?.data?.message || "Unable to add product to cart"
-            );
+            alert('	Unable to add this product to your cart. Please try again.')
         } finally {
             setCartLoading(null);
         }
@@ -225,18 +211,6 @@ function Products() {
                         <option value="rating">Top Rated</option>
                     </select>
                 </div>
-
-                {message && (
-                    <div className="mb-5 rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-[#245C45]">
-                        {message}
-                        <button
-                            onClick={() => setMessage("")}
-                            className="float-right font-bold"
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
 
                 <div className="grid grid-cols-1 gap-8 md:grid-cols-[200px_1fr] lg:grid-cols-[230px_1fr]">
                     <aside>
@@ -291,18 +265,14 @@ function Products() {
                                     onClick={() => window.location.reload()}
                                     className="mt-4 rounded-lg bg-[#245C45] px-5 py-2 text-white"
                                 >
-                                    Try Again
+                                    Retry
                                 </button>
                             </div>
                         ) : filteredProducts.length === 0 ? (
                             <div className="rounded-xl bg-white px-5 py-16 text-center">
                                 <i className="fa-solid fa-box-open text-4xl text-gray-300" />
-                                <h3 className="mt-4 text-lg font-semibold text-gray-800">
-                                    No products found
-                                </h3>
-                                <p className="mt-2 text-sm text-gray-500">
-                                    Try another search or category.
-                                </p>
+                                <h3 className="mt-4 text-lg font-semibold text-gray-800">No products found</h3>
+                                <p className="mt-2 text-sm text-gray-500">Try adjusting your search or selecting a different category.</p>
                                 <button
                                     onClick={() => {
                                         setSearch("");
