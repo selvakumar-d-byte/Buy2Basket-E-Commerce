@@ -179,7 +179,7 @@ function Products() {
 
         try {
             setCartLoading(id);
-            const response = await addToCart(id);
+            await addToCart(id);
             alert('	Product added to your cart successfully!')
         } catch (error) {
             console.error("Add to cart error:", error);
