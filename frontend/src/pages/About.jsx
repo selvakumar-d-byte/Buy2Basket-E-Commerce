@@ -3,41 +3,25 @@ function About() {
     return (
         <main className="min-h-screen bg-white">
 
-            {/* Hero */}
             <section className="bg-[#245C45] px-4 py-16 text-center text-white sm:py-20">
-                <p className="text-sm font-semibold uppercase tracking-widest text-green-200">
-                    Get to Know Us
-                </p>
-
-                <h1 className="mt-3 text-3xl font-bold sm:text-5xl">
-                    About Buy2Basket
-                </h1>
-
+                <p className="text-sm font-semibold uppercase tracking-widest text-green-200">Get to Know Us</p>
+                <h1 className="mt-3 text-3xl font-bold sm:text-5xl">About Buy2Basket</h1>
                 <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-green-100 sm:text-base">
                     Your everyday shopping destination, bringing together
                     quality products, great choices and a simple shopping experience.
                 </p>
             </section>
 
-            {/* Our Story */}
             <section className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 sm:px-8 lg:grid-cols-2 lg:px-12">
                 <div className="overflow-hidden rounded-2xl">
-                    <img
-                        src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1000"
-                        alt="Online shopping"
+                    <img src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1000" alt="Online shopping"
                         className="h-72 w-full object-cover sm:h-96"
                     />
                 </div>
 
                 <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">
-                        Our Story
-                    </p>
-
-                    <h2 className="mt-3 text-3xl font-bold text-gray-900">
-                        Shopping Made Simple
-                    </h2>
-
+                    <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">Our Story</p>
+                    <h2 className="mt-3 text-3xl font-bold text-gray-900">Shopping Made Simple</h2>
                     <p className="mt-5 leading-7 text-gray-600">
                         Buy2Basket is designed to make online shopping
                         convenient and enjoyable. We bring different product
@@ -53,17 +37,11 @@ function About() {
                 </div>
             </section>
 
-            {/* Mission & Vision */}
             <section className="bg-gray-50 px-4 py-16 sm:px-8 lg:px-12">
                 <div className="mx-auto max-w-7xl">
                     <div className="mb-10 text-center">
-                        <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">
-                            What Drives Us
-                        </p>
-
-                        <h2 className="mt-2 text-3xl font-bold text-gray-900">
-                            Our Mission & Vision
-                        </h2>
+                        <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">What Drives Us</p>
+                        <h2 className="mt-2 text-3xl font-bold text-gray-900">Our Mission & Vision</h2>
                     </div>
 
                     <div className="grid gap-7 md:grid-cols-2">
