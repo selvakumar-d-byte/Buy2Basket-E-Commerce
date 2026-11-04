@@ -9,9 +9,7 @@ export const getCart = async () => {
 
 // Add product to cart
 export const addToCart = async (productId) => {
-    const response = await API.post("/cart/add", {
-        productId
-    });
+    const response = await API.post("/cart/add", {productId});
     return response.data;
 };
 

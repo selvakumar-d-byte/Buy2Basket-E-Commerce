@@ -247,17 +247,12 @@ function Products() {
                         </div>
 
                         {loading ? (
-                            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-                                {[1, 2, 3, 4, 5, 6, 8].map((item) => (
+                            <div className="flex w-full h-dvh justify-center items-center rounded-xl bg-white p-3">
                                     <div
-                                        key={item}
-                                        className="animate-pulse rounded-xl bg-white p-3"
+                                        className="animate-pulse"
                                     >
-                                        <div className="aspect-square rounded-lg bg-gray-200" />
-                                        <div className="mt-4 h-4 rounded bg-gray-200" />
-                                        <div className="mt-2 h-4 w-2/3 rounded bg-gray-200" />
+                                        <h1>Products Loading...</h1>
                                     </div>
-                                ))}
                             </div>
                         ) : error ? (
                             <div className="rounded-xl bg-white px-5 py-12 text-center">
@@ -276,10 +271,7 @@ function Products() {
                                 <h3 className="mt-4 text-lg font-semibold text-gray-800">No products found</h3>
                                 <p className="mt-2 text-sm text-gray-500">Try adjusting your search or selecting a different category.</p>
                                 <button
-                                    onClick={() => {
-                                        setSearch("");
-                                        setCategory("All Categories");
-                                    }}
+                                    onClick={() => {setSearch("");setCategory("All Categories");}}
                                     className="mt-4 font-semibold text-[#245C45] underline"
                                 >
                                     Clear filters
@@ -301,15 +293,14 @@ function Products() {
 
                                     return (
                                         <article
-                                            key={id}
-                                            className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                                            key={id} onClick={() => navigate(`/products/${product._id}`)}
+                                            className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-lg"
                                         >
                                             {/* Product image */}
                                             <div className="relative overflow-hidden bg-gray-100">
                                                 <img
                                                     src={product.image}
                                                     alt={product.name}
-                                                    onClick={() => navigate(`/products/${product._id}`)}
                                                     loading="lazy"
                                                     className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
                                                     onError={(e) => {

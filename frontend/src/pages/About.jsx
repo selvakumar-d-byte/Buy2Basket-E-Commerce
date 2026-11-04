@@ -46,14 +46,8 @@ function About() {
 
                     <div className="grid gap-7 md:grid-cols-2">
                         <div className="rounded-2xl bg-white p-8 shadow-sm">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-2xl text-[#245C45]">
-                                ◎
-                            </div>
-
-                            <h3 className="mt-5 text-xl font-bold text-gray-900">
-                                Our Mission
-                            </h3>
-
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-2xl text-[#245C45]">◎</div>
+                            <h3 className="mt-5 text-xl font-bold text-gray-900">Our Mission</h3>
                             <p className="mt-3 leading-7 text-gray-600">
                                 To make everyday shopping easier by bringing
                                 a wide range of products together through
@@ -62,14 +56,8 @@ function About() {
                         </div>
 
                         <div className="rounded-2xl bg-white p-8 shadow-sm">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-2xl text-[#245C45]">
-                                ✦
-                            </div>
-
-                            <h3 className="mt-5 text-xl font-bold text-gray-900">
-                                Our Vision
-                            </h3>
-
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-2xl text-[#245C45]">✦</div>
+                            <h3 className="mt-5 text-xl font-bold text-gray-900">Our Vision</h3>
                             <p className="mt-3 leading-7 text-gray-600">
                                 To create a trusted shopping destination
                                 where customers can discover products,
@@ -80,16 +68,10 @@ function About() {
                 </div>
             </section>
 
-            {/* Why Choose Us */}
             <section className="mx-auto max-w-7xl px-4 py-16 sm:px-8 lg:px-12">
                 <div className="text-center">
-                    <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">
-                        The Buy2Basket Difference
-                    </p>
-
-                    <h2 className="mt-2 text-3xl font-bold text-gray-900">
-                        Why Choose Us?
-                    </h2>
+                    <p className="text-sm font-semibold uppercase tracking-wider text-[#245C45]">The Buy2Basket Difference</p>
+                    <h2 className="mt-2 text-3xl font-bold text-gray-900">Why Choose Us?</h2>
                 </div>
 
                 <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
@@ -110,21 +92,10 @@ function About() {
                             description: "Discover and explore your favourite products in one place."
                         }
                     ].map((item) => (
-                        <div
-                            key={item.title}
-                            className="rounded-2xl border border-gray-100 p-7 text-center transition hover:border-green-200 hover:shadow-md"
-                        >
-                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-2xl text-[#245C45]">
-                                {item.icon}
-                            </div>
-
-                            <h3 className="mt-5 text-lg font-bold text-gray-900">
-                                {item.title}
-                            </h3>
-
-                            <p className="mt-3 text-sm leading-6 text-gray-500">
-                                {item.description}
-                            </p>
+                        <div key={item.title} className="rounded-2xl border border-gray-100 p-7 text-center transition hover:border-green-200 hover:shadow-md">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-2xl text-[#245C45]">{item.icon}</div>
+                            <h3 className="mt-5 text-lg font-bold text-gray-900">{item.title}</h3>
+                            <p className="mt-3 text-sm leading-6 text-gray-500">{item.description}</p>
                         </div>
                     ))}
                 </div>

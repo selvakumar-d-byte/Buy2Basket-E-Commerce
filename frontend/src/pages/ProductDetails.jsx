@@ -74,9 +74,9 @@ function ProductDetails() {
             if (quantity > 1) {
                 await updateCartQuantity(product._id, quantity);
             }
-            setMessage("Product added to your cart successfully!");
+            alert("Product added to your cart successfully!");
         } catch (error) {
-            setMessage(
+            alert(
                 error.response?.data?.message || "Unable to add product to cart."
             );
         } finally {
@@ -97,14 +97,14 @@ function ProductDetails() {
             if (wishlist) {
                 await removeFromWishlist(product._id);
                 setWishlist(false);
-                setMessage("Removed from your wishlist.");
+                alert("Removed from your wishlist.");
             } else {
                 await addToWishlist(product._id);
                 setWishlist(true);
-                setMessage("Added to your wishlist!");
+                alert("Added to your wishlist!");
             }
         } catch (error) {
-            setMessage(
+            alert(
                 error.response?.data?.message || "Wishlist update failed."
             );
         } finally {
