@@ -9,8 +9,8 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const streamifier = require("streamifier");
-const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
+const { Resend } = require("resend");
 
 const cloudinary = require("./config/cloudinary");
 const Product = require("./models/product");
@@ -22,16 +22,14 @@ const Order = require("./models/Order");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 // --------------------------------------------------
 // ENVIRONMENT VALIDATION
 // --------------------------------------------------
 
 if (!process.env.MONGODB_URL) {
     throw new Error("MONGODB_URL is missing");
-}
-
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn("Warning: Email environment variables are missing");
 }
 
 // --------------------------------------------------
@@ -56,22 +54,9 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 
 // --------------------------------------------------
-// EMAIL CONFIGURATION
-// --------------------------------------------------
-
-const otpStore = new Map();
-
-const mailTransporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
-
-// --------------------------------------------------
 // SEND SIGNUP OTP
 // --------------------------------------------------
+
 
 app.post("/send-signup-otp", async (req, res) => {
     try {
@@ -87,7 +72,7 @@ app.post("/send-signup-otp", async (req, res) => {
             });
         }
 
-        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        if (!process.env.RESEND_API_KEY) {
             return res.status(503).json({
                 message: "Email service is not configured"
             });
@@ -108,12 +93,20 @@ app.post("/send-signup-otp", async (req, res) => {
 
         const otp = crypto.randomInt(100000, 1000000).toString();
 
-        await mailTransporter.sendMail({
-            from: process.env.EMAIL_USER,
+        const { data, error } = await resend.emails.send({
+            from: "dselvakumar2007@gmail.com",
             to: email,
             subject: "Buy2Basket - Email Verification OTP",
             text: `Your Buy2Basket verification OTP is ${otp}. It expires in 5 minutes. Do not share this code with anyone.`
         });
+
+        if (error) {
+            console.error("Resend email error:", error);
+
+            return res.status(500).json({
+                message: "Failed to send OTP. Please try again."
+            });
+        }
 
         otpStore.set(email, {
             otp,
@@ -127,7 +120,7 @@ app.post("/send-signup-otp", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("OTP email error:", error.message);
+        console.error("OTP email error:", error);
 
         return res.status(500).json({
             message: "Failed to send OTP. Please try again."

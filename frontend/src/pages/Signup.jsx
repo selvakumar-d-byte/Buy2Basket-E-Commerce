@@ -54,7 +54,12 @@ function Signup() {
             setOtpVerified(false);
             alert("OTP sent to your email!");
         } catch (error) {
-            alert(error.message);
+            console.error("OTP Error:", error.response?.data || error);
+
+            alert(
+                error.response?.data?.message ||
+                "Failed to send OTP. Please try again."
+            );
         } finally {
             setLoading(false);
         }
