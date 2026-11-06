@@ -1,4 +1,3 @@
-
 const dns = require("node:dns");
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
@@ -9,8 +8,6 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const streamifier = require("streamifier");
-const crypto = require("node:crypto");
-const { Resend } = require("resend");
 
 const cloudinary = require("./config/cloudinary");
 const Product = require("./models/product");
@@ -21,8 +18,6 @@ const Order = require("./models/Order");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --------------------------------------------------
 // ENVIRONMENT VALIDATION
@@ -52,132 +47,6 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: "1mb" }));
-
-// --------------------------------------------------
-// SEND SIGNUP OTP
-// --------------------------------------------------
-
-
-app.post("/send-signup-otp", async (req, res) => {
-    try {
-        const email = String(req.body.email || "")
-            .trim()
-            .toLowerCase();
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                message: "Please enter a valid email address"
-            });
-        }
-
-        if (!process.env.RESEND_API_KEY) {
-            return res.status(503).json({
-                message: "Email service is not configured"
-            });
-        }
-
-        const existingRecord = otpStore.get(email);
-
-        // Prevent frequent OTP requests
-        if (
-            existingRecord &&
-            existingRecord.lastSentAt &&
-            Date.now() - existingRecord.lastSentAt < 60 * 1000
-        ) {
-            return res.status(429).json({
-                message: "Please wait before requesting another OTP"
-            });
-        }
-
-        const otp = crypto.randomInt(100000, 1000000).toString();
-
-        const { data, error } = await resend.emails.send({
-            from: "dselvakumar2007@gmail.com",
-            to: email,
-            subject: "Buy2Basket - Email Verification OTP",
-            text: `Your Buy2Basket verification OTP is ${otp}. It expires in 5 minutes. Do not share this code with anyone.`
-        });
-
-        if (error) {
-            console.error("Resend email error:", error);
-
-            return res.status(500).json({
-                message: "Failed to send OTP. Please try again."
-            });
-        }
-
-        otpStore.set(email, {
-            otp,
-            expiresAt: Date.now() + 5 * 60 * 1000,
-            attempts: 0,
-            lastSentAt: Date.now()
-        });
-
-        return res.status(200).json({
-            message: "OTP sent successfully to your email"
-        });
-
-    } catch (error) {
-        console.error("OTP email error:", error);
-
-        return res.status(500).json({
-            message: "Failed to send OTP. Please try again."
-        });
-    }
-});
-
-// --------------------------------------------------
-// VERIFY SIGNUP OTP
-// --------------------------------------------------
-
-app.post("/verify-signup-otp", (req, res) => {
-    const email = String(req.body.email || "")
-        .trim()
-        .toLowerCase();
-
-    const enteredOtp = String(req.body.otp || "").trim();
-
-    const record = otpStore.get(email);
-
-    if (!record) {
-        return res.status(400).json({
-            message: "Please request a new OTP"
-        });
-    }
-
-    if (Date.now() > record.expiresAt) {
-        otpStore.delete(email);
-
-        return res.status(400).json({
-            message: "OTP expired. Please request a new OTP"
-        });
-    }
-
-    if (record.attempts >= 5) {
-        otpStore.delete(email);
-
-        return res.status(429).json({
-            message: "Too many attempts. Please request a new OTP"
-        });
-    }
-
-    if (record.otp !== enteredOtp) {
-        record.attempts += 1;
-
-        return res.status(400).json({
-            message: "Incorrect OTP"
-        });
-    }
-
-    otpStore.delete(email);
-
-    return res.status(200).json({
-        verified: true,
-        message: "Email verified successfully"
-    });
-});
 
 // --------------------------------------------------
 // MULTER IMAGE UPLOAD CONFIGURATION
